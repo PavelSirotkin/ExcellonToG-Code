@@ -3,6 +3,8 @@
 Excellon to G-Code Converter — это программа для преобразования файлов сверловки в формате 
 Excellon (*.drl, .txt) в управляющий G-код для ЧПУ-станков. 
 
+![alt text](https://github.com/PavelSirotkin/ExcellonToG-Code/blob/main/sh2.png)
+
 Основные возможности:
 
 Визуализация отверстий и инструментов с цветовой дифференциацией.
