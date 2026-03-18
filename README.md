@@ -5,6 +5,10 @@
 ![Python](https://img.shields.io/badge/Python-3.8+-blue)
 ![License](https://img.shields.io/badge/License-Free-green)
 
+| Главный интерфейс | 
+|:--:|
+| ![Главный интерфейс](Screenshots/sh4.png) |
+
 ## Возможности
 
 ### Поддержка форматов
