@@ -1,4 +1,4 @@
-# Excellon to G-Code Converter v3.0
+# Excellon to G-Code Converter v3.2
 
 Генератор G-code из файлов сверловки и фрезеровки печатных плат с интерактивной визуализацией и проигрывателем G-code.
 
