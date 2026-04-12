@@ -248,9 +248,17 @@ def create_app():
     # ==========================================================
     # Автозагрузка файлов базы инструментов и параметров G-code
     # ==========================================================
-    app_dir = os.path.dirname(os.path.abspath(__file__))
-    # Переходим на уровень вверх (из ui/ в корень проекта)
-    project_dir = os.path.dirname(app_dir)
+    # Определяем директорию приложения
+    # Для .exe (PyInstaller) — директория .exe файла
+    # Для запуска из исходников — корень проекта
+    import sys
+    if getattr(sys, 'frozen', False):
+        # Запуск из .exe (PyInstaller)
+        project_dir = os.path.dirname(sys.executable)
+    else:
+        # Запуск из исходников
+        app_dir = os.path.dirname(os.path.abspath(__file__))
+        project_dir = os.path.dirname(app_dir)
 
     # Загрузка параметров G-code
     gcode_params_file = os.path.join(project_dir, "gcode_params.json")
