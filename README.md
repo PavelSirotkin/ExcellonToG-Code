@@ -2,7 +2,7 @@
 
 [![Python](https://img.shields.io/badge/Python-3.x-blue.svg)](https://www.python.org/)
 [![Tests](https://img.shields.io/badge/Tests-139%20passing-brightgreen.svg)](tests/)
-[![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
+[![License](https://img.shields.io/badge/license-free-green.svg)](LICENSE)
 
 **Конвертация Excellon-файлов (сверление PCB) в G-code для ЧПУ-станков.**
 
