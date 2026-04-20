@@ -1,0 +1,72 @@
+{
+  "drills": {
+    "0.45": {
+      "diameter": 0.45,
+      "spindle_speed": 20000,
+      "plunge_feed": 100.0,
+      "retract_feed": 500.0
+    },
+    "0.55": {
+      "diameter": 0.55,
+      "spindle_speed": 20000,
+      "plunge_feed": 100.0,
+      "retract_feed": 500.0
+    },
+    "0.85": {
+      "diameter": 0.85,
+      "spindle_speed": 20000,
+      "plunge_feed": 200.0,
+      "retract_feed": 500.0
+    },
+    "0.95": {
+      "diameter": 0.95,
+      "spindle_speed": 20000,
+      "plunge_feed": 200.0,
+      "retract_feed": 500.0
+    },
+    "1.05": {
+      "diameter": 1.05,
+      "spindle_speed": 20000,
+      "plunge_feed": 300.0,
+      "retract_feed": 500.0
+    },
+    "1.25": {
+      "diameter": 1.25,
+      "spindle_speed": 20000,
+      "plunge_feed": 300.0,
+      "retract_feed": 500.0
+    },
+    "3.05": {
+      "diameter": 3.05,
+      "spindle_speed": 20000,
+      "plunge_feed": 500.0,
+      "retract_feed": 500.0
+    },
+    "2.3": {
+      "diameter": 2.3,
+      "spindle_speed": 20000,
+      "plunge_feed": 400.0,
+      "retract_feed": 500.0
+    }
+  },
+  "endmills": {
+    "0.8": {
+      "diameter": 0.8,
+      "spindle_speed": 20000,
+      "cutting_feed": 50.0,
+      "stepover": 50.0
+    },
+    "1.0": {
+      "diameter": 1.0,
+      "spindle_speed": 20000,
+      "cutting_feed": 100.0,
+      "stepover": 50.0
+    },
+    "2.0": {
+      "diameter": 2.0,
+      "spindle_speed": 20000,
+      "cutting_feed": 200.0,
+      "stepover": 50.0
+    }
+  }
+}

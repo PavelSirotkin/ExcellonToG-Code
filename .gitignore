@@ -5,8 +5,9 @@ __pycache__/
 *$py.class
 *.so
 *.egg-info/
-dist/
+# Dist/build (except release)
 build/
+!dist/*.*
 
 # Virtual environments
 venv/
@@ -29,5 +30,5 @@ Thumbs.db
 *.spec
 
 # Generated files (keep templates, ignore runtime data)
-tool_base.json
-gcode_params.json
+!tool_base.json
+!gcode_params.json

@@ -1,0 +1,14 @@
+{
+  "safe_z": 5.0,
+  "drill_z": -2.5,
+  "feed_rate": 100.0,
+  "mill_feed": 50.0,
+  "rapid_rate": 500.0,
+  "park_z": 30.0,
+  "outline_tool_diameter": 2.0,
+  "outline_depth_per_pass": 0.5,
+  "outline_n_tabs": 4,
+  "outline_tab_width": 2.0,
+  "outline_tab_height": 1.0,
+  "outline_direction": "CCW"
+}
