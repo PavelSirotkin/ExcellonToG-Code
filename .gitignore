@@ -1,0 +1,33 @@
+# Python
+__pycache__/
+.pytest_cache
+*.py[cod]
+*$py.class
+*.so
+*.egg-info/
+dist/
+build/
+
+# Virtual environments
+venv/
+env/
+.venv/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Project-specific
+.claude/
+.qwen/
+*.spec
+
+# Generated files (keep templates, ignore runtime data)
+tool_base.json
+gcode_params.json
