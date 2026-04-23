@@ -1,8 +1,0 @@
-{
-  "safe_z": 5.0,
-  "drill_z": -2.5,
-  "feed_rate": 100,
-  "mill_feed": 50,
-  "rapid_rate": 500,
-  "park_z": 30
-}

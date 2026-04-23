@@ -134,7 +134,7 @@ pip install -r requirements-dev.txt
 
 ```bash
 pip install pyinstaller
-pyinstaller ExcellonToG-Code.spec
+pyinstaller ExcellonToG-Code_v4.5.spec
 ```
 
 Результат — один `.exe` в папке `dist/`.
@@ -229,7 +229,7 @@ ExcellonToG-Code/
 ├── main.py                      # Точка входа (5 строк)
 ├── version.py                   # Номер версии
 ├── requirements-dev.txt         # pytest + pytest-cov
-├── ExcellonToG-Code.spec		 # PyInstaller spec для сборки exe
+├── ExcellonToG-Code_v4.5.spec   # PyInstaller spec для сборки exe
 ├── gcode_params.json            # Сохранённые параметры G-code (создаётся при старте)
 ├── tool_base.json               # База инструментов (режим «Про»)
 ├── icon.ico                     # Иконка приложения
@@ -360,8 +360,8 @@ python -m pytest tests/test_polygon_ops.py -v
 
 | Версия | Дата | Ключевые изменения |
 |---|---|---|
-| **4.6** | Добавлена справка |
-| 4.5 | | Апр 2026 | Gerber-парсер, обрезка платы по контуру, polygon_ops (offset, tabs), 2D-валидация отверстий внутри контура, правильное размещение tabs на серединах сторон |
+| **4.6** | Апр 2026 | Встроенная система справки с древовидной навигацией, контекстные tooltips, горячая клавиша F1 |
+| 4.5 | Апр 2026 | Gerber-парсер, обрезка платы по контуру, polygon_ops (offset, tabs), 2D-валидация отверстий внутри контура, правильное размещение tabs на серединах сторон |
 | 4.0 | Апр 2026 | Модульная архитектура (core/ui), база инструментов, режимы Простой/Про, покрытие тестами |
 | 3.2 | — | Монолитный `SRC/ExcellonToG-Code_V_3.2.py` (2163 строки) |
 
