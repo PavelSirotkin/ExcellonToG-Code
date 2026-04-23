@@ -8,6 +8,7 @@ from version import VERSION
 from core.mode_engine import ModeEngine
 from core.gcode_params import GCodeParams
 import core.config as cfg
+from ui.enhanced_tooltip import EnhancedTooltip, TOOLTIPS
 
 # Глобальный движок режимов
 mode_engine = ModeEngine()
@@ -54,23 +55,31 @@ def create_app():
     files_frame = tk.LabelFrame(col_settings, text="Файлы", padx=5, pady=5)
     files_frame.pack(fill="x", padx=5, pady=2)
 
-    tk.Button(files_frame, text="📂 Открыть Excellon (отверстия)",
-              command=_choose_file).pack(fill="x", pady=2)
+    btn_excellon = tk.Button(files_frame, text="📂 Открыть Excellon (отверстия)",
+              command=_choose_file)
+    btn_excellon.pack(fill="x", pady=2)
+    EnhancedTooltip(btn_excellon, TOOLTIPS["btn_open_excellon"])
+    
     holes_file_label = tk.Label(files_frame, text="Отверстия: не загружены",
                                 font=("Arial", 8), fg="gray")
     holes_file_label.pack(anchor="w")
     cfg.set_widget("holes_file_label", holes_file_label)
 
-    tk.Button(files_frame, text="📂 Открыть SlotHoles (слоты)",
-              command=_choose_slot_file).pack(fill="x", pady=2)
+    btn_slots = tk.Button(files_frame, text="📂 Открыть SlotHoles (слоты)",
+              command=_choose_slot_file)
+    btn_slots.pack(fill="x", pady=2)
+    EnhancedTooltip(btn_slots, TOOLTIPS["btn_open_slots"])
+    
     slot_file_label = tk.Label(files_frame, text="Слоты: не загружены",
                                font=("Arial", 8), fg="gray")
     slot_file_label.pack(anchor="w")
     cfg.set_widget("slot_file_label", slot_file_label)
 
     # --- Контур платы (Gerber) ---
-    tk.Button(files_frame, text="📂 Открыть Board Outline (Gerber)",
-              command=_choose_outline_file).pack(fill="x", pady=2)
+    btn_gerber = tk.Button(files_frame, text="📂 Открыть Board Outline (Gerber)",
+              command=_choose_outline_file)
+    btn_gerber.pack(fill="x", pady=2)
+    EnhancedTooltip(btn_gerber, TOOLTIPS["btn_open_gerber"])
     outline_file_label = tk.Label(files_frame, text="Контур: не загружен",
                                   font=("Arial", 8), fg="gray")
     outline_file_label.pack(anchor="w")
@@ -102,6 +111,15 @@ def create_app():
     ]
 
     param_entries = {}
+    tooltip_keys = {
+        "safe_z": "entry_safe_z",
+        "drill_z": "entry_drill_z",
+        "feed_rate": "entry_feed_rate",
+        "mill_feed": "entry_mill_feed",
+        "rapid_rate": "entry_rapid_rate",
+        "park_z": "entry_park_z"
+    }
+    
     for label_text, key, default in params:
         row = tk.Frame(params_frame)
         row.pack(fill="x", pady=1)
@@ -113,6 +131,10 @@ def create_app():
         entry.bind("<FocusOut>", _on_param_change)
         entry.bind("<Return>", _on_param_change)
         param_entries[key] = entry
+        
+        # Добавить tooltip
+        if key in tooltip_keys and tooltip_keys[key] in TOOLTIPS:
+            EnhancedTooltip(entry, TOOLTIPS[tooltip_keys[key]])
 
     cfg.set_widget("safe_z_entry", param_entries["safe_z"])
     cfg.set_widget("drill_z_entry", param_entries["drill_z"])
@@ -134,6 +156,13 @@ def create_app():
     ]
 
     outline_entries = {}
+    outline_tooltip_keys = {
+        "outline_tool_diameter": "entry_outline_tool_diameter",
+        "outline_depth_per_pass": "entry_outline_depth_per_pass",
+        "outline_n_tabs": "entry_outline_n_tabs",
+        "outline_tab_width": "entry_outline_tab_width",
+        "outline_tab_height": "entry_outline_tab_height",
+    }
     for label_text, key, default in outline_params:
         row = tk.Frame(outline_frame)
         row.pack(fill="x", pady=1)
@@ -145,6 +174,10 @@ def create_app():
         entry.bind("<FocusOut>", _on_param_change)
         entry.bind("<Return>", _on_param_change)
         outline_entries[key] = entry
+
+        # Добавить tooltip
+        if key in outline_tooltip_keys and outline_tooltip_keys[key] in TOOLTIPS:
+            EnhancedTooltip(entry, TOOLTIPS[outline_tooltip_keys[key]])
 
     cfg.set_widget("outline_tool_diameter_entry", outline_entries["outline_tool_diameter"])
     cfg.set_widget("outline_depth_per_pass_entry", outline_entries["outline_depth_per_pass"])
@@ -160,6 +193,7 @@ def create_app():
     dir_combo = ttk.Combobox(dir_row, values=["CCW", "CW"], width=6, textvariable=outline_direction_var)
     dir_combo.pack(side="right")
     dir_combo.bind("<<ComboboxSelected>>", _on_param_change)
+    EnhancedTooltip(dir_combo, TOOLTIPS["combo_outline_direction"])
     cfg.set_widget("outline_direction_var", outline_direction_var)
 
     # --- Группа "Опции" ---
@@ -326,6 +360,9 @@ def create_app():
     cfg.set_widget("coord_label", coord_label)
 
     canvas.bind("<Configure>", _on_canvas_resize)
+    
+    # Горячая клавиша F1 для вызова справки
+    root.bind("<F1>", lambda e: _open_help())
 
     from ui.renderer import redraw_grid
     redraw_grid()
