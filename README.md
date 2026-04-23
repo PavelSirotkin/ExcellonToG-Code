@@ -134,7 +134,7 @@ pip install -r requirements-dev.txt
 
 ```bash
 pip install pyinstaller
-pyinstaller ExcellonToG-Code_v4.5.spec
+pyinstaller ExcellonToG-Code.spec
 ```
 
 Результат — один `.exe` в папке `dist/`.
@@ -229,7 +229,7 @@ ExcellonToG-Code/
 ├── main.py                      # Точка входа (5 строк)
 ├── version.py                   # Номер версии
 ├── requirements-dev.txt         # pytest + pytest-cov
-├── ExcellonToG-Code_v4.5.spec   # PyInstaller spec для сборки exe
+├── ExcellonToG-Code.spec        # PyInstaller spec для сборки exe
 ├── gcode_params.json            # Сохранённые параметры G-code (создаётся при старте)
 ├── tool_base.json               # База инструментов (режим «Про»)
 ├── icon.ico                     # Иконка приложения
