@@ -5,7 +5,10 @@ import math
 import os
 from typing import List, Dict, Tuple, Optional
 from core.polygon_ops import offset_segments, insert_tabs, flatten
-from core.gcode_generator import write_tool_start, write_tool_parking
+from core.gcode_generator import (
+    write_tool_start, write_tool_parking,
+    emit_rapid_xy, emit_mill_xy, emit_plunge_z, emit_retract_z,
+)
 
 
 def build_outline_section(buf, segments: List[Dict], filename: str,
@@ -91,11 +94,16 @@ def build_outline_section(buf, segments: List[Dict], filename: str,
     for pass_idx in range(n_passes):
         current_z = max(drill_z, -depth_per_pass * (pass_idx + 1))
         is_last_pass = (pass_idx == n_passes - 1)
+        
+        # Tabs начинают формироваться на том проходе, где current_z <= drill_z + tab_height
+        # Это гарантирует, что итоговая высота перемычки будет равна tab_height
+        tab_start_z = drill_z + tab_height
+        should_use_tabs = (n_tabs > 0 and current_z <= tab_start_z)
 
         buf.write(f"\n; Pass {pass_idx + 1}/{n_passes}, Z={current_z:.2f}\n")
 
-        if is_last_pass and n_tabs > 0:
-            # Последний проход с tabs
+        if should_use_tabs:
+            # Проход с tabs (начиная с того прохода, где достигается уровень перемычки)
             _generate_tabbed_pass(buf, flat_points, current_z, safe_z,
                                   rapid_rate, mill_feed, plunge_feed,
                                   tab_height, n_tabs, tab_width)
@@ -123,22 +131,22 @@ def _generate_simple_pass(buf, points: List[Tuple[float, float]],
 
     # Подъезд к первой точке на быстром ходе
     first = points[0]
-    buf.write(f"G00 X{first[0]:.3f} Y{first[1]:.3f} F{rapid_rate:.0f}\n")
+    emit_rapid_xy(buf, first[0], first[1], rapid_rate)
     # Погружение по Z — с подачей врезания
-    buf.write(f"G01 Z{target_z:.2f} F{plunge_feed:.0f}\n")
+    emit_plunge_z(buf, target_z, plunge_feed)
 
     # Проход по всем точкам — с подачей резания
     for p in points[1:]:
-        buf.write(f"G01 X{p[0]:.3f} Y{p[1]:.3f} F{mill_feed:.0f}\n")
+        emit_mill_xy(buf, p[0], p[1], mill_feed)
 
     # Замыкаем контур, только если последняя точка ещё не совпадает с первой
     # (flatten для замкнутого контура уже возвращает [A, ..., A]).
     last = points[-1]
     if math.hypot(last[0] - first[0], last[1] - first[1]) > 1e-6:
-        buf.write(f"G01 X{first[0]:.3f} Y{first[1]:.3f} F{mill_feed:.0f}\n")
+        emit_mill_xy(buf, first[0], first[1], mill_feed)
 
     # Подъём на быстром ходе
-    buf.write(f"G00 Z{safe_z:.2f} F{rapid_rate:.0f}\n")
+    emit_retract_z(buf, safe_z, rapid_rate)
 
 
 def _generate_tabbed_pass(buf, points: List[Tuple[float, float]],
@@ -180,9 +188,9 @@ def _generate_tabbed_pass(buf, points: List[Tuple[float, float]],
 
     # Подъезд к первой точке на быстром ходе
     first = tabbed_segments[0]['p1']
-    buf.write(f"G00 X{first[0]:.3f} Y{first[1]:.3f} F{rapid_rate:.0f}\n")
+    emit_rapid_xy(buf, first[0], first[1], rapid_rate)
     # Погружение по Z — с подачей врезания
-    buf.write(f"G01 Z{target_z:.2f} F{plunge_feed:.0f}\n")
+    emit_plunge_z(buf, target_z, plunge_feed)
 
     # Проход с tabs.
     # Внутри tab фреза остаётся в материале на уровне target_z + tab_height:
@@ -198,21 +206,21 @@ def _generate_tabbed_pass(buf, points: List[Tuple[float, float]],
         if is_tab and not current_is_tab:
             # Вход в tab: поднимаемся до уровня перемычки с подачей врезания
             buf.write("; TAB BEGIN\n")
-            buf.write(f"G01 Z{target_z + tab_height:.2f} F{plunge_feed:.0f}\n")
+            emit_plunge_z(buf, target_z + tab_height, plunge_feed)
             current_is_tab = True
         elif not is_tab and current_is_tab:
             # Выход из tab: опускаемся обратно на рабочую глубину
-            buf.write(f"G01 Z{target_z:.2f} F{plunge_feed:.0f}\n")
+            emit_plunge_z(buf, target_z, plunge_feed)
             buf.write("; TAB END\n")
             current_is_tab = False
 
         # Линейное перемещение всегда с рабочей подачей (фреза в материале)
-        buf.write(f"G01 X{p2[0]:.3f} Y{p2[1]:.3f} F{mill_feed:.0f}\n")
+        emit_mill_xy(buf, p2[0], p2[1], mill_feed)
 
     # Если контур закончился внутри tab — вернуться на рабочую глубину
     if current_is_tab:
-        buf.write(f"G01 Z{target_z:.2f} F{plunge_feed:.0f}\n")
+        emit_plunge_z(buf, target_z, plunge_feed)
         buf.write("; TAB END\n")
 
     # Подъём на быстром ходе
-    buf.write(f"G00 Z{safe_z:.2f} F{rapid_rate:.0f}\n")
+    emit_retract_z(buf, safe_z, rapid_rate)

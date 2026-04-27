@@ -102,3 +102,71 @@ class TestTwoOptSlots:
         # Каждый слот должен остаться тем же (start, end)
         for s in result:
             assert s in slots
+
+
+class TestTwoOptIterationLimit:
+    def test_respects_max_iterations_points(self):
+        """two_opt должен останавливаться после max_iterations."""
+        # Создаём большой набор точек
+        points = [(i, i % 10) for i in range(100)]
+        # С лимитом 1 итерация должна завершиться быстро
+        result = two_opt(points, max_iterations=1)
+        assert len(result) == len(points)
+        assert set(result) == set(points)
+
+    def test_respects_max_iterations_slots(self):
+        """two_opt_slots должен останавливаться после max_iterations."""
+        # Создаём большой набор слотов
+        slots = [((i, i % 10), (i + 1, (i + 1) % 10)) for i in range(100)]
+        # С лимитом 1 итерация должна завершиться быстро
+        result = two_opt_slots(slots, max_iterations=1)
+        assert len(result) == len(slots)
+        assert set(result) == set(slots)
+
+    def test_default_limit_used_when_none(self):
+        """При max_iterations=None должен использоваться дефолтный лимит."""
+        points = [(i, i) for i in range(50)]
+        # Не должно зависнуть
+        result = two_opt(points, max_iterations=None)
+        assert len(result) == len(points)
+
+    def test_zero_iterations_returns_input(self):
+        """При max_iterations=0 должен вернуть исходный маршрут."""
+        points = [(0, 0), (10, 10), (1, 1), (9, 9), (2, 2)]
+        result = two_opt(points, max_iterations=0)
+        assert result == points
+
+
+class TestTwoOptTimeBudget:
+    def test_time_budget_stops_early(self):
+        """time_budget_ms должен прерывать оптимизацию даже при большом max_iterations."""
+        import time
+        # Большой набор точек, чтобы 2-opt занимал заметное время
+        points = [(i * 0.1, (i * 7) % 100) for i in range(500)]
+        start = time.monotonic()
+        # 50 мс — много меньше времени, нужного на полную сходимость
+        result = two_opt(points, max_iterations=10000, time_budget_ms=50)
+        elapsed_ms = (time.monotonic() - start) * 1000
+        # Бюджет 50 мс + накладные на проверку deadline между i-итерациями.
+        # Допуск 500 мс (с большим запасом для медленных CI).
+        assert elapsed_ms < 500, f"Превышен бюджет: {elapsed_ms:.1f} ms"
+        # Маршрут должен сохранить состав точек
+        assert len(result) == len(points)
+        assert set(result) == set(points)
+
+    def test_time_budget_none_no_limit(self):
+        """time_budget_ms=None означает «без лимита по времени» (только по итерациям)."""
+        points = [(0, 0), (10, 10), (1, 1), (9, 9), (2, 2)]
+        # Без лимита — должен сходиться за разумное время
+        result = two_opt(points, time_budget_ms=None)
+        assert set(result) == set(points)
+
+    def test_time_budget_slots(self):
+        """time_budget_ms работает и для two_opt_slots."""
+        import time
+        slots = [((i, 0), (i + 1, 1)) for i in range(500)]
+        start = time.monotonic()
+        result = two_opt_slots(slots, max_iterations=10000, time_budget_ms=50)
+        elapsed_ms = (time.monotonic() - start) * 1000
+        assert elapsed_ms < 500, f"Превышен бюджет: {elapsed_ms:.1f} ms"
+        assert len(result) == len(slots)

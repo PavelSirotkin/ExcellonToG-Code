@@ -55,6 +55,34 @@ def normalize_to_ccw(points: List[Tuple[float, float]]) -> List[Tuple[float, flo
     return list(reversed(points))
 
 
+def is_closed_contour(segments: List[Dict], tol_mm: float = 1e-3) -> bool:
+    """Проверить, что контур замкнут (последняя точка совпадает с первой
+    в пределах tol_mm).
+
+    Контур из < 2 сегментов или с конечной точкой далеко от стартовой
+    считается незамкнутым. Используется перед операциями offset_segments
+    и insert_tabs — на незамкнутом контуре они дают мусор молча.
+
+    Args:
+        segments: список сегментов 'line'/'arc'
+        tol_mm: допуск на стыковку start ↔ end (по умолчанию 1 микрон)
+    Returns:
+        True если контур замкнут, иначе False
+    """
+    if not segments or len(segments) < 2:
+        return False
+
+    def _seg_start(seg: Dict) -> Tuple[float, float]:
+        return seg['p1'] if seg['type'] == 'line' else seg['start']
+
+    def _seg_end(seg: Dict) -> Tuple[float, float]:
+        return seg['p2'] if seg['type'] == 'line' else seg['end']
+
+    first = _seg_start(segments[0])
+    last = _seg_end(segments[-1])
+    return math.hypot(first[0] - last[0], first[1] - last[1]) <= tol_mm
+
+
 # ==========================================================
 # Point in polygon (ray casting)
 # ==========================================================
@@ -225,6 +253,12 @@ def offset_segments(segments: List[Dict], delta: float,
     if not segments or delta == 0:
         return segments
 
+    # Контур должен быть замкнут. На незамкнутом offset/tabs давали бы мусор молча
+    # (последний сегмент не стыковался бы с первым). Возвращаем [] — caller
+    # увидит "Could not create offset contour" и сообщит пользователю.
+    if not is_closed_contour(segments):
+        return []
+
     # Преобразуем в точки для упрощения
     points = flatten(segments, tol_mm=0.01)
     if len(points) < 3:
@@ -305,30 +339,47 @@ def offset_segments(segments: List[Dict], delta: float,
 # Tabs insertion
 # ==========================================================
 
-def compute_total_length(segments: List[Dict]) -> float:
-    """Вычислить общую длину контура."""
-    total = 0.0
-    for seg in segments:
-        if seg['type'] == 'line':
-            x1, y1 = seg['p1']
-            x2, y2 = seg['p2']
-            total += math.sqrt((x2 - x1) ** 2 + (y2 - y1) ** 2)
-        elif seg['type'] == 'arc':
-            # Длина дуги = r * theta
+def segment_length(seg: Dict) -> float:
+    """Вычислить длину одного сегмента (линия или дуга).
+
+    Для линии — евклидово расстояние между p1 и p2.
+    Для дуги — `r * |end_angle - start_angle|` с учётом направления (`ccw`).
+
+    Если у дуги отсутствуют обязательные поля (`r`/`center`/`ccw`) — возвращается
+    длина хорды (грубая нижняя оценка). Это бывает только на повреждённых данных,
+    реальный gerber_parser всегда заполняет все поля.
+    """
+    if seg['type'] == 'line':
+        x1, y1 = seg['p1']
+        x2, y2 = seg['p2']
+        return math.sqrt((x2 - x1) ** 2 + (y2 - y1) ** 2)
+    if seg['type'] == 'arc':
+        try:
             r = seg['r']
             start = seg['start']
             end = seg['end']
             center = seg['center']
-            start_angle = math.atan2(start[1] - center[1], start[0] - center[0])
-            end_angle = math.atan2(end[1] - center[1], end[0] - center[0])
-            if seg['ccw']:
-                while end_angle < start_angle:
-                    end_angle += 2 * math.pi
-            else:
-                while end_angle > start_angle:
-                    end_angle -= 2 * math.pi
-            total += r * abs(end_angle - start_angle)
-    return total
+            ccw = seg['ccw']
+        except KeyError:
+            # Битая arc-структура — возвращаем длину хорды
+            start = seg.get('start', (0, 0))
+            end = seg.get('end', (0, 0))
+            return math.hypot(end[0] - start[0], end[1] - start[1])
+        start_angle = math.atan2(start[1] - center[1], start[0] - center[0])
+        end_angle = math.atan2(end[1] - center[1], end[0] - center[0])
+        if ccw:
+            while end_angle < start_angle:
+                end_angle += 2 * math.pi
+        else:
+            while end_angle > start_angle:
+                end_angle -= 2 * math.pi
+        return r * abs(end_angle - start_angle)
+    return 0.0
+
+
+def compute_total_length(segments: List[Dict]) -> float:
+    """Вычислить общую длину контура."""
+    return sum(segment_length(seg) for seg in segments)
 
 
 def point_at_length(segments: List[Dict], target_length: float) -> Tuple[float, float]:
@@ -406,6 +457,12 @@ def insert_tabs(segments: List[Dict], n_tabs: int,
     """
     if n_tabs <= 0 or tab_width <= 0 or not segments:
         return list(segments)
+
+    # Контур должен быть замкнут. На незамкнутом tabs давали бы мусор молча
+    # (перемычки могли бы оказаться на разрыве контура). Возвращаем [] — caller
+    # увидит проблему и сообщит пользователю.
+    if not is_closed_contour(segments):
+        return []
 
     # Собираем логические стороны контура с их кумулятивными длинами.
     # Каждый входной сегмент считается отдельной стороной (для outline-пути

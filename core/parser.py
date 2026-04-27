@@ -48,7 +48,16 @@ def parse_excellon_file(filename, coord_format=None):
         coord_format = cfg.coordinate_format
     tools = {}
     current_tool = None
-    _, format_y = map(int, coord_format.split('.'))
+    
+    # Парсинг формата координат с обработкой ошибок
+    try:
+        _, format_y = map(int, coord_format.split('.'))
+    except (ValueError, AttributeError) as e:
+        raise ValueError(
+            f"Неверный формат координат '{coord_format}'. "
+            f"Ожидается N.N (например, '3.3' или '4.2'). Подробности: {e}"
+        )
+    
     last_x = None
     last_y = None
     with open(filename, 'r') as f:
@@ -102,7 +111,16 @@ def parse_slot_file(filename, coord_format=None):
         coord_format = cfg.coordinate_format
     tools = {}
     current_tool = None
-    _, format_y = map(int, coord_format.split('.'))
+    
+    # Парсинг формата координат с обработкой ошибок
+    try:
+        _, format_y = map(int, coord_format.split('.'))
+    except (ValueError, AttributeError) as e:
+        raise ValueError(
+            f"Неверный формат координат '{coord_format}'. "
+            f"Ожидается N.N (например, '3.3' или '4.2'). Подробности: {e}"
+        )
+    
     lines = []
     with open(filename, 'r') as f:
         lines = [l.strip() for l in f.readlines()]

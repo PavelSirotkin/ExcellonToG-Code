@@ -9,7 +9,13 @@ from core.gcode_generator import (
     _build_drilling_gcode,
     _build_milling_gcode,
     _build_combined_gcode,
+    _build_outline_only_gcode,
     _calc_multipass_offsets,
+    _pick_outline_tool_num,
+    emit_rapid_xy,
+    emit_mill_xy,
+    emit_plunge_z,
+    emit_retract_z,
 )
 import io
 
@@ -253,6 +259,57 @@ class TestCalcMultipassOffsets:
         max_offset = max(abs(o) for o in offsets)
         assert abs(max_offset + 0.8 / 2 - 1.0 / 2) < 1e-9
 
+    # --- Защита от вырожденных входов (раньше зависало на этих) ---
+
+    def test_zero_tool_diameter_returns_empty(self):
+        """tool_diameter=0 ранее давал бесконечный цикл; должно быть []."""
+        assert _calc_multipass_offsets(3.0, 0.0, 50) == []
+
+    def test_negative_tool_diameter_returns_empty(self):
+        assert _calc_multipass_offsets(3.0, -1.0, 50) == []
+
+    def test_zero_slot_width_returns_empty(self):
+        assert _calc_multipass_offsets(0.0, 1.0, 50) == []
+
+    def test_negative_slot_width_returns_empty(self):
+        assert _calc_multipass_offsets(-3.0, 1.0, 50) == []
+
+    def test_tool_wider_than_slot_returns_empty(self):
+        """Фреза шире слота — multi-pass невозможен."""
+        assert _calc_multipass_offsets(1.0, 2.0, 50) == []
+
+    def test_nan_inputs_return_empty(self):
+        nan = float('nan')
+        assert _calc_multipass_offsets(nan, 1.0, 50) == []
+        assert _calc_multipass_offsets(3.0, nan, 50) == []
+
+    def test_inf_inputs_return_empty(self):
+        inf = float('inf')
+        assert _calc_multipass_offsets(inf, 1.0, 50) == []
+        assert _calc_multipass_offsets(3.0, inf, 50) == []
+
+    def test_completes_under_max_iter_for_typical_params(self):
+        """Типичный slot, типичная фреза → разумное число проходов, не упирается в MAX_ITER."""
+        offsets = _calc_multipass_offsets(50.0, 1.0, 50)  # slot 50мм, фреза 1мм
+        # Шаг 0.5; проходы 0, ±0.5, ±1.0, ... до края (24.5).
+        # Должно быть около 99 проходов (центр + 49 пар), точно меньше MAX_ITER.
+        assert 0 < len(offsets) < 200
+
+    def test_multipass_skipped_when_offsets_empty(self):
+        """_write_slot_passes не должен падать на пустых offsets."""
+        from core.gcode_generator import _write_slot_passes
+        buf = io.StringIO()
+        # Пустой список offsets — раньше IndexError на passes[0]
+        _write_slot_passes(buf, 0.0, 0.0, 10.0, 0.0, [],
+                           drill_z=-2.0, safe_z=5.0,
+                           eff_plunge=100, eff_retract=500,
+                           eff_mill=50, rapid_rate=500)
+        out = buf.getvalue()
+        assert "Slot skipped" in out
+        # Никаких реальных движений в G-code
+        assert "G01 Z" not in out
+        assert "G00 X" not in out
+
     def test_multipass_gcode_zigzag(self):
         # При multi_pass=True зигзаг: одно погружение и один подъём на весь слот
         slot_tools = {1: {'diameter': 3.0, 'slots': [((0.0, 0.0), (10.0, 0.0))],
@@ -274,3 +331,128 @@ class TestCalcMultipassOffsets:
         # Несколько проходов по XY
         xy_moves = [l for l in gcode.splitlines() if l.startswith("G01 X")]
         assert len(xy_moves) >= 3  # центр + минимум 2 боковых прохода
+
+
+class TestEmitHelpers:
+    """Тесты низкоуровневых хелперов вывода G-code."""
+
+    def test_emit_rapid_xy_format(self):
+        buf = io.StringIO()
+        emit_rapid_xy(buf, 12.3456, -7.89, 500)
+        assert buf.getvalue() == "G00 X12.346 Y-7.890 F500\n"
+
+    def test_emit_mill_xy_format(self):
+        buf = io.StringIO()
+        emit_mill_xy(buf, 1.0, 2.0, 50.7)
+        # Подача округляется до целого
+        assert buf.getvalue() == "G01 X1.000 Y2.000 F51\n"
+
+    def test_emit_plunge_z_format(self):
+        buf = io.StringIO()
+        emit_plunge_z(buf, -2.567, 100)
+        assert buf.getvalue() == "G01 Z-2.57 F100\n"
+
+    def test_emit_retract_z_format(self):
+        buf = io.StringIO()
+        emit_retract_z(buf, 5.0, 500)
+        assert buf.getvalue() == "G00 Z5.00 F500\n"
+
+
+class TestPickOutlineToolNum:
+    """Тесты подбора свободного номера инструмента для секции обрезки контура."""
+
+    def test_no_tools_returns_default(self):
+        assert _pick_outline_tool_num() == 100
+        assert _pick_outline_tool_num(None, None) == 100
+        assert _pick_outline_tool_num({}, {}) == 100
+
+    def test_uses_default_when_max_below(self):
+        # Все инструменты ниже 100 — берём 100, чтобы контур был "выше"
+        assert _pick_outline_tool_num({"1": {}, "2": {}, "10": {}}) == 100
+
+    def test_max_plus_one_when_above_default(self):
+        # Если уже есть T100 — берём 101
+        assert _pick_outline_tool_num({"1": {}, "100": {}}) == 101
+        # Несколько словарей — учитывает максимум среди всех
+        assert _pick_outline_tool_num({"1": {}, "100": {}}, {"50": {}, "150": {}}) == 151
+
+    def test_int_keys(self):
+        # Ключи могут быть int (а не str)
+        assert _pick_outline_tool_num({1: {}, 200: {}}) == 201
+
+    def test_skips_non_numeric_keys(self):
+        # Нечисловые ключи игнорируются, не валят функцию
+        assert _pick_outline_tool_num({"abc": {}, "5": {}}) == 100
+        assert _pick_outline_tool_num({"foo": {}}) == 100  # вернуть default
+
+
+class TestOutlineToolNumIntegration:
+    """Интеграционная проверка: T-номер контура не конфликтует с Excellon."""
+
+    def _make_outline_segments(self):
+        from core.gerber_parser import make_line
+        return [
+            make_line((0, 0), (10, 0)),
+            make_line((10, 0), (10, 10)),
+            make_line((10, 10), (0, 10)),
+            make_line((0, 10), (0, 0)),
+        ]
+
+    def _outline_params(self):
+        return {
+            'tool_diameter': 2.0,
+            'depth_per_pass': 1.0,
+            'n_tabs': 0,
+            'tab_width': 0,
+            'tab_height': 0,
+            'direction': 'CCW',
+        }
+
+    def _params(self):
+        return {'safe_z': 5.0, 'drill_z': -1.0, 'feed_rate': 100,
+                'mill_feed': 50, 'rapid_rate': 500, 'park_z': 30}
+
+    def test_combined_picks_unique_when_t100_exists(self):
+        """Если в Excellon есть T100, контур получает T101."""
+        current_tools = {"100": {'diameter': 1.0, 'holes': [(0.0, 0.0)],
+                                 'visible': True, 'var': None}}
+        gcode, errors = _build_combined_gcode(
+            current_tools, "holes.drl", None, None,
+            self._params(), tool_params_dict=None,
+            board_outline=self._make_outline_segments(),
+            board_outline_filename="outline.gbr",
+            outline_params=self._outline_params(),
+        )
+        assert errors == []
+        # В выводе обе T-метки: T100 от сверления и T101 от контура
+        assert "T100" in gcode
+        assert "T101" in gcode
+
+    def test_combined_default_100_when_no_conflict(self):
+        """Если Excellon-инструменты ниже 100, контур получает T100."""
+        current_tools = {"1": {'diameter': 1.0, 'holes': [(0.0, 0.0)],
+                               'visible': True, 'var': None}}
+        gcode, errors = _build_combined_gcode(
+            current_tools, "holes.drl", None, None,
+            self._params(), tool_params_dict=None,
+            board_outline=self._make_outline_segments(),
+            board_outline_filename="outline.gbr",
+            outline_params=self._outline_params(),
+        )
+        assert errors == []
+        assert "T100" in gcode
+
+    def test_outline_only_avoids_loaded_tools(self):
+        """Outline-only тоже учитывает уже загруженные dict'ы инструментов."""
+        current_tools = {"100": {'diameter': 1.0, 'holes': [(0.0, 0.0)],
+                                 'visible': True, 'var': None}}
+        slot_tools = {"105": {'diameter': 2.0, 'slots': [((0.0, 0.0), (1.0, 0.0))],
+                              'visible': True, 'var': None}}
+        gcode, errors = _build_outline_only_gcode(
+            self._make_outline_segments(), "outline.gbr",
+            self._params(), self._outline_params(),
+            current_tools=current_tools, slot_tools=slot_tools,
+        )
+        assert errors == []
+        # T106 — следующий после max(100, 105)=105
+        assert "T106" in gcode

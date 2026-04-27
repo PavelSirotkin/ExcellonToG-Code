@@ -110,3 +110,47 @@ class TestParseSlotFile:
                         round(end[0], 1), round(end[1], 1)))
         expected = {(10.0, 10.0, 30.0, 30.0), (50.0, 50.0, 70.0, 70.0)}
         assert coords == expected
+
+
+class TestCoordinateFormatValidation:
+    def test_parse_excellon_invalid_format_string(self):
+        """parse_excellon_file должен выбросить ValueError при некорректном формате."""
+        path = os.path.join(FIXTURES_DIR, 'test_3_3.drl')
+        with pytest.raises(ValueError, match="Неверный формат координат 'invalid'"):
+            parse_excellon_file(path, coord_format="invalid")
+
+    def test_parse_excellon_invalid_format_no_dot(self):
+        """parse_excellon_file должен выбросить ValueError при формате без точки."""
+        path = os.path.join(FIXTURES_DIR, 'test_3_3.drl')
+        with pytest.raises(ValueError, match="Неверный формат координат '33'"):
+            parse_excellon_file(path, coord_format="33")
+
+    def test_parse_excellon_invalid_format_non_numeric(self):
+        """parse_excellon_file должен выбросить ValueError при нечисловом формате."""
+        path = os.path.join(FIXTURES_DIR, 'test_3_3.drl')
+        with pytest.raises(ValueError, match="Неверный формат координат 'a.b'"):
+            parse_excellon_file(path, coord_format="a.b")
+
+    def test_parse_excellon_invalid_format_empty(self):
+        """parse_excellon_file должен выбросить ValueError при пустом формате."""
+        path = os.path.join(FIXTURES_DIR, 'test_3_3.drl')
+        with pytest.raises(ValueError, match="Неверный формат координат ''"):
+            parse_excellon_file(path, coord_format="")
+
+    def test_parse_slot_invalid_format_string(self):
+        """parse_slot_file должен выбросить ValueError при некорректном формате."""
+        path = os.path.join(FIXTURES_DIR, 'test_slots.drl')
+        with pytest.raises(ValueError, match="Неверный формат координат 'bad'"):
+            parse_slot_file(path, coord_format="bad")
+
+    def test_parse_slot_invalid_format_empty(self):
+        """parse_slot_file должен выбросить ValueError при пустом формате."""
+        path = os.path.join(FIXTURES_DIR, 'test_slots.drl')
+        with pytest.raises(ValueError, match="Неверный формат координат ''"):
+            parse_slot_file(path, coord_format="")
+
+    def test_parse_slot_invalid_format_no_dot(self):
+        """parse_slot_file должен выбросить ValueError при формате без точки."""
+        path = os.path.join(FIXTURES_DIR, 'test_slots.drl')
+        with pytest.raises(ValueError, match="Неверный формат координат '42'"):
+            parse_slot_file(path, coord_format="42")

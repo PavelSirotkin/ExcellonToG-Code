@@ -131,7 +131,7 @@ class HelpWindow:
                                  "param_mill_feed", "param_rapid_rate", "param_park_z"],
             "Режимы работы": ["mode_simple", "mode_pro", "tool_database"],
             "Обрезка по контуру": ["outline_loading", "outline_params", "outline_tabs", "outline_direction"],
-            "Визуализация": ["viz_overview", "viz_player", "viz_legend", "viz_filters"],
+            "Визуализация": ["viz_overview", "viz_player", "viz_legend", "viz_filters", "viz_statistics"],
             "Управление": ["ui_navigation", "ui_zoom", "ui_tooltips", "ui_hotkeys"],
             "Генерация G-code": ["gen_drilling", "gen_milling", "gen_outline", "gen_combined"],
             "Оптимизация": ["opt_tsp", "opt_nearest", "opt_2opt"],

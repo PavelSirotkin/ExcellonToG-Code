@@ -13,20 +13,67 @@ def validate_gcode_params(safe_z, drill_z, feed_rate, rapid_rate, park_z, mill_f
                              'rapid_rate': rapid_rate, 'park_z': park_z, 'mill_feed': mill_feed})
 
 
+_MULTIPASS_MAX_ITER = 10000  # верхняя граница — на любой физически разумный слот хватает с запасом
+
+
+# ==========================================================
+# Низкоуровневые хелперы вывода G-code
+#
+# Унифицированный формат: X/Y в .3f, Z в .2f, подача в .0f.
+# Все callers генератора (drilling, milling slots, outline) обязаны проходить
+# через эти функции — это гарантирует одинаковый вид G-code и упрощает,
+# например, будущую смену постпроцессора (G0/G1 → специфика GRBL/Mach3 и т.п.).
+# ==========================================================
+
+def emit_rapid_xy(buf, x: float, y: float, rapid_rate: float) -> None:
+    """Холостое перемещение в плоскости XY (G00)."""
+    buf.write(f"G00 X{x:.3f} Y{y:.3f} F{rapid_rate:.0f}\n")
+
+
+def emit_mill_xy(buf, x: float, y: float, mill_rate: float) -> None:
+    """Рабочее перемещение в плоскости XY (G01) — резка."""
+    buf.write(f"G01 X{x:.3f} Y{y:.3f} F{mill_rate:.0f}\n")
+
+
+def emit_plunge_z(buf, z: float, plunge_rate: float) -> None:
+    """Рабочее погружение по Z (G01) — врезание/опускание под нагрузкой."""
+    buf.write(f"G01 Z{z:.2f} F{plunge_rate:.0f}\n")
+
+
+def emit_retract_z(buf, z: float, rapid_rate: float) -> None:
+    """Холостой подъём по Z (G00) — выход из материала на безопасную высоту."""
+    buf.write(f"G00 Z{z:.2f} F{rapid_rate:.0f}\n")
+
+
 def _calc_multipass_offsets(slot_width, tool_diameter, stepover_pct):
     """Список смещений от оси слота для multi-pass. Симметрично от 0.
     Шаг = tool_diameter * (1 - stepover_pct/100). Если stepover_pct==0 → 50%.
     Условие включения прохода: |offset| + tool_diameter/2 <= slot_width/2.
+
+    Невалидные входы (tool_diameter <= 0, slot_width <= 0, NaN/inf, фреза шире
+    слота) → возвращается []. Для гарантии завершения число итераций
+    ограничено _MULTIPASS_MAX_ITER.
     """
+    # Валидация: все размеры — конечные положительные числа
+    if not (math.isfinite(slot_width) and math.isfinite(tool_diameter)):
+        return []
+    if tool_diameter <= 0 or slot_width <= 0:
+        return []
+    # Фреза шире слота — multi-pass невозможен
+    if tool_diameter > slot_width + 1e-9:
+        return []
+
     pct = stepover_pct if stepover_pct and stepover_pct > 0 else 50
     step = tool_diameter * (1.0 - pct / 100.0)
     if step <= 0:
         step = tool_diameter * 0.5
+    # После guard выше step гарантированно > 0, но защитимся и здесь
+    if step <= 0:
+        return [0.0]
     half_w = slot_width / 2.0
     half_d = tool_diameter / 2.0
     offsets = []
-    k = 0
-    while True:
+    for k in range(_MULTIPASS_MAX_ITER):
         candidates = [0.0] if k == 0 else [k * step, -k * step]
         added = False
         for offset in candidates:
@@ -35,7 +82,10 @@ def _calc_multipass_offsets(slot_width, tool_diameter, stepover_pct):
                 added = True
         if k > 0 and not added:
             break
-        k += 1
+    # Если цикл выбрал _MULTIPASS_MAX_ITER без break — параметры явно вырожденные
+    # (например, slot_width огромный при микроскопическом step). Возвращаем то,
+    # что успели накопить — пользователь увидит длинную последовательность
+    # проходов и поймёт, что параметры стоит проверить.
 
     # Добавить граничные проходы (касание стенок), если не покрыты stepover-проходами
     max_wall_offset = half_w - half_d  # = (slot_width - tool_diameter) / 2
@@ -55,14 +105,22 @@ def _write_slot_passes(buf, sx, sy, ex, ey, offsets,
     Между проходами — только горизонтальное перемещение на уровне drill_z.
     Направление чередуется: pass1 start→end, pass2 end'→start', pass3 start''→end'' ...
     """
+    if not offsets:
+        # Нет валидных проходов (фреза шире слота, нулевые/отрицательные размеры
+        # и т.п.). Безопасно пропускаем слот с комментарием — оператор увидит
+        # пометку в G-code и поймёт, что параметры инструмента стоит проверить.
+        buf.write("; Slot skipped: no valid multi-pass offsets "
+                  "(tool wider than slot or invalid dimensions)\n")
+        return
+
     dx = ex - sx
     dy = ey - sy
     length = math.sqrt(dx * dx + dy * dy)
     if length < 1e-9:
         # Нулевой слот — одна точка, просто погружение
-        buf.write(f"G00 X{sx:.3f} Y{sy:.3f} F{rapid_rate:.0f}\n")
-        buf.write(f"G01 Z{drill_z:.2f} F{eff_plunge:.0f}\n")
-        buf.write(f"G00 Z{safe_z:.2f} F{eff_retract:.0f}\n")
+        emit_rapid_xy(buf, sx, sy, rapid_rate)
+        emit_plunge_z(buf, drill_z, eff_plunge)
+        emit_retract_z(buf, safe_z, eff_retract)
         return
     # Нормаль (перпендикуляр к оси, повёрнут на 90°)
     nx = -dy / length
@@ -85,9 +143,9 @@ def _write_slot_passes(buf, sx, sy, ex, ey, offsets,
     # При нечётном i проход идёт в обратную сторону (end→start)
 
     p0sx, p0sy, p0ex, p0ey = passes[0]
-    buf.write(f"G00 X{p0sx:.3f} Y{p0sy:.3f} F{rapid_rate:.0f}\n")
-    buf.write(f"G01 Z{drill_z:.2f} F{eff_plunge:.0f}\n")
-    buf.write(f"G01 X{p0ex:.3f} Y{p0ey:.3f} F{eff_mill:.0f}\n")
+    emit_rapid_xy(buf, p0sx, p0sy, rapid_rate)
+    emit_plunge_z(buf, drill_z, eff_plunge)
+    emit_mill_xy(buf, p0ex, p0ey, eff_mill)
 
     # Текущий конец: конец прохода 0 (прямой) = p0ex, p0ey
     cur_x, cur_y = p0ex, p0ey
@@ -98,17 +156,17 @@ def _write_slot_passes(buf, sx, sy, ex, ey, offsets,
         if i % 2 == 1:
             # Нечётный проход — идём в обратную сторону: end→start
             # Переезд от cur к pex,pey (поперёк + небольшой сдвиг вдоль)
-            buf.write(f"G01 X{pex:.3f} Y{pey:.3f} F{eff_mill:.0f}\n")
-            buf.write(f"G01 X{psx:.3f} Y{psy:.3f} F{eff_mill:.0f}\n")
+            emit_mill_xy(buf, pex, pey, eff_mill)
+            emit_mill_xy(buf, psx, psy, eff_mill)
             cur_x, cur_y = psx, psy
         else:
             # Чётный проход — прямое направление: start→end
-            buf.write(f"G01 X{psx:.3f} Y{psy:.3f} F{eff_mill:.0f}\n")
-            buf.write(f"G01 X{pex:.3f} Y{pey:.3f} F{eff_mill:.0f}\n")
+            emit_mill_xy(buf, psx, psy, eff_mill)
+            emit_mill_xy(buf, pex, pey, eff_mill)
             cur_x, cur_y = pex, pey
 
     # Подъём после последнего прохода
-    buf.write(f"G00 Z{safe_z:.2f} F{eff_retract:.0f}\n")
+    emit_retract_z(buf, safe_z, eff_retract)
 
 
 def write_tool_start(f, tool, diameter, count, unit, safe_z, rapid_rate, spindle_speed=None):
@@ -124,7 +182,7 @@ def write_tool_start(f, tool, diameter, count, unit, safe_z, rapid_rate, spindle
         f.write(f"M03 S{int(spindle_speed)}\n")
     else:
         f.write("M03\n")
-    f.write(f"G00 Z{safe_z:.2f} F{rapid_rate:.0f}\n")
+    emit_retract_z(f, safe_z, rapid_rate)
 
 
 def write_tool_parking(f, park_z, rapid_rate):
@@ -132,7 +190,9 @@ def write_tool_parking(f, park_z, rapid_rate):
     f.write("\n; Parking\n")
     f.write("; Spindle OFF\n")
     f.write("M05\n")
-    f.write(f"G00 Z{park_z:.2f} F{rapid_rate:.0f}\n")
+    emit_retract_z(f, park_z, rapid_rate)
+    # Парковка XY — особый случай: без подачи, координаты целыми числами.
+    # Это исторический формат, который проверяется тестами и читаемее в логе.
     f.write("G00 X0 Y0\n")
 
 
@@ -148,6 +208,28 @@ def _get_feed_rate(tool_params, global_key="feed_rate"):
     if tool_params and global_key in tool_params:
         return tool_params[global_key]
     return None
+
+
+def _pick_outline_tool_num(*tool_dicts, default: int = 100) -> int:
+    """Подобрать свободный номер инструмента для секции обрезки контура.
+
+    Берёт max(tool_num) + 1 среди ключей всех переданных словарей инструментов
+    (current_tools, slot_tools и т.п.). Если ни в одном словаре нет ключей,
+    парсящихся как целые — возвращает default. Если максимум меньше default —
+    возвращает default (чтобы контур всегда оставался в "верхнем" диапазоне).
+    """
+    used = []
+    for d in tool_dicts:
+        if not d:
+            continue
+        for key in d.keys():
+            try:
+                used.append(int(key))
+            except (TypeError, ValueError):
+                continue
+    if not used:
+        return default
+    return max(max(used) + 1, default)
 
 
 def _build_drilling_gcode(current_tools, current_filename, params, tool_params_dict=None):
@@ -202,9 +284,9 @@ def _build_drilling_gcode(current_tools, current_filename, params, tool_params_d
         write_tool_start(buf, tool, data['diameter'], len(data['holes']),
                          "holes", safe_z, rapid_rate, spindle)
         for x_mm, y_mm in data['holes']:
-            buf.write(f"G00 X{x_mm:.3f} Y{y_mm:.3f} F{rapid_rate:.0f}\n")
-            buf.write(f"G01 Z{drill_z:.2f} F{eff_plunge:.0f}\n")
-            buf.write(f"G00 Z{safe_z:.2f} F{eff_retract:.0f}\n")
+            emit_rapid_xy(buf, x_mm, y_mm, rapid_rate)
+            emit_plunge_z(buf, drill_z, eff_plunge)
+            emit_retract_z(buf, safe_z, eff_retract)
         write_tool_parking(buf, park_z, rapid_rate)
 
     buf.write("M30\n")
@@ -278,10 +360,10 @@ def _build_milling_gcode(slot_tools, slot_filename, params, tool_params_dict=Non
                 _write_slot_passes(buf, sx, sy, ex, ey, offsets,
                                    drill_z, safe_z, eff_plunge, eff_retract, eff_mill, rapid_rate)
             else:
-                buf.write(f"G00 X{sx:.3f} Y{sy:.3f} F{rapid_rate:.0f}\n")
-                buf.write(f"G01 Z{drill_z:.2f} F{eff_plunge:.0f}\n")
-                buf.write(f"G01 X{ex:.3f} Y{ey:.3f} F{eff_mill:.0f}\n")
-                buf.write(f"G00 Z{safe_z:.2f} F{eff_retract:.0f}\n")
+                emit_rapid_xy(buf, sx, sy, rapid_rate)
+                emit_plunge_z(buf, drill_z, eff_plunge)
+                emit_mill_xy(buf, ex, ey, eff_mill)
+                emit_retract_z(buf, safe_z, eff_retract)
         write_tool_parking(buf, park_z, rapid_rate)
 
     buf.write("M30\n")
@@ -357,9 +439,9 @@ def _build_combined_gcode(current_tools, current_filename, slot_tools, slot_file
             write_tool_start(buf, tool, data['diameter'], len(data['holes']),
                              "holes", safe_z, rapid_rate, spindle)
             for x_mm, y_mm in data['holes']:
-                buf.write(f"G00 X{x_mm:.3f} Y{y_mm:.3f} F{rapid_rate:.0f}\n")
-                buf.write(f"G01 Z{drill_z:.2f} F{eff_plunge:.0f}\n")
-                buf.write(f"G00 Z{safe_z:.2f} F{eff_retract:.0f}\n")
+                emit_rapid_xy(buf, x_mm, y_mm, rapid_rate)
+                emit_plunge_z(buf, drill_z, eff_plunge)
+                emit_retract_z(buf, safe_z, eff_retract)
             write_tool_parking(buf, park_z, rapid_rate)
 
     # Фрезеровка слотов
@@ -388,18 +470,19 @@ def _build_combined_gcode(current_tools, current_filename, slot_tools, slot_file
                     _write_slot_passes(buf, sx, sy, ex, ey, offsets,
                                        drill_z, safe_z, eff_plunge, eff_retract, eff_mill, rapid_rate)
                 else:
-                    buf.write(f"G00 X{sx:.3f} Y{sy:.3f} F{rapid_rate:.0f}\n")
-                    buf.write(f"G01 Z{drill_z:.2f} F{eff_plunge:.0f}\n")
-                    buf.write(f"G01 X{ex:.3f} Y{ey:.3f} F{eff_mill:.0f}\n")
-                    buf.write(f"G00 Z{safe_z:.2f} F{eff_retract:.0f}\n")
+                    emit_rapid_xy(buf, sx, sy, rapid_rate)
+                    emit_plunge_z(buf, drill_z, eff_plunge)
+                    emit_mill_xy(buf, ex, ey, eff_mill)
+                    emit_retract_z(buf, safe_z, eff_retract)
             write_tool_parking(buf, park_z, rapid_rate)
 
     # Обрезка по контуру
     if board_outline and outline_params:
         buf.write("\n; ===== BOARD OUTLINE MILLING =====\n\n")
         from core.outline_gcode import build_outline_section
+        outline_tool_num = _pick_outline_tool_num(current_tools, slot_tools)
         build_outline_section(buf, board_outline, board_outline_filename,
-                              params, outline_params, tool_num=100)
+                              params, outline_params, tool_num=outline_tool_num)
 
     buf.write("M30\n")
     buf.write("; End program\n")
@@ -407,7 +490,8 @@ def _build_combined_gcode(current_tools, current_filename, slot_tools, slot_file
 
 
 def _build_outline_only_gcode(board_outline, board_outline_filename,
-                              params, outline_params):
+                              params, outline_params,
+                              current_tools=None, slot_tools=None):
     """Построение G-code только для обрезки по контуру платы.
 
     Args:
@@ -416,6 +500,9 @@ def _build_outline_only_gcode(board_outline, board_outline_filename,
         params: глобальные параметры G-code (safe_z, drill_z, rapid_rate, park_z...)
         outline_params: параметры обрезки (tool_diameter, depth_per_pass, n_tabs,
                         tab_width, tab_height, direction)
+        current_tools: dict отверстий — используется только для подбора номера
+                       инструмента контура без конфликта с уже загруженными.
+        slot_tools: dict слотов — то же назначение.
     Returns:
         (gcode_text, errors)
     """
@@ -448,8 +535,9 @@ def _build_outline_only_gcode(board_outline, board_outline_filename,
     buf.write("G90 ; Absolute coordinates\n")
 
     from core.outline_gcode import build_outline_section
+    outline_tool_num = _pick_outline_tool_num(current_tools, slot_tools)
     build_outline_section(buf, board_outline, board_outline_filename,
-                          params, outline_params, tool_num=100)
+                          params, outline_params, tool_num=outline_tool_num)
 
     buf.write("M30\n")
     buf.write("; End program\n")

@@ -27,7 +27,9 @@ Thumbs.db
 # Project-specific
 .claude/
 .qwen/
-*.spec
+#*.spec
+CHANGES.md
+RELEASE_NOTES.md
 
 # Generated files (keep templates, ignore runtime data)
 !tool_base.json

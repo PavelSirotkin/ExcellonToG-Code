@@ -6,7 +6,7 @@ import math
 from core.polygon_ops import (
     bounding_box, polygon_signed_area, is_ccw, normalize_to_ccw,
     point_in_polygon, flatten, offset_segments, insert_tabs,
-    compute_total_length, point_at_length
+    compute_total_length, point_at_length, is_closed_contour
 )
 from core.gerber_parser import make_line, make_arc
 
@@ -225,3 +225,100 @@ class TestPointAtLength:
         point = point_at_length(segments, 10)
         assert abs(point[0] - 10) < 0.001
         assert abs(point[1] - 0) < 0.001
+
+
+class TestIsClosedContour:
+    def test_closed_square(self):
+        """Замкнутый квадрат должен распознаваться как замкнутый."""
+        segments = [
+            make_line((0, 0), (10, 0)),
+            make_line((10, 0), (10, 10)),
+            make_line((10, 10), (0, 10)),
+            make_line((0, 10), (0, 0)),
+        ]
+        assert is_closed_contour(segments) is True
+
+    def test_open_contour(self):
+        """Незамкнутый контур (конец не совпадает с началом)."""
+        segments = [
+            make_line((0, 0), (10, 0)),
+            make_line((10, 0), (10, 10)),
+            make_line((10, 10), (0, 10)),
+            # Последний сегмент не возвращается к (0, 0)
+        ]
+        assert is_closed_contour(segments) is False
+
+    def test_almost_closed_within_tolerance(self):
+        """Контур с небольшим зазором в пределах допуска."""
+        segments = [
+            make_line((0, 0), (10, 0)),
+            make_line((10, 0), (10, 10)),
+            make_line((10, 10), (0, 10)),
+            make_line((0, 10), (0.0005, 0.0005)),  # Зазор 0.0007 мм < 1e-3
+        ]
+        assert is_closed_contour(segments) is True
+
+    def test_almost_closed_outside_tolerance(self):
+        """Контур с зазором больше допуска."""
+        segments = [
+            make_line((0, 0), (10, 0)),
+            make_line((10, 0), (10, 10)),
+            make_line((10, 10), (0, 10)),
+            make_line((0, 10), (0.5, 0.5)),  # Зазор ~0.7 мм > 1e-3
+        ]
+        assert is_closed_contour(segments) is False
+
+    def test_single_segment(self):
+        """Один сегмент не может быть замкнутым контуром."""
+        segments = [make_line((0, 0), (10, 0))]
+        assert is_closed_contour(segments) is False
+
+    def test_empty_segments(self):
+        """Пустой список не является замкнутым контуром."""
+        assert is_closed_contour([]) is False
+
+
+class TestClosedContourValidation:
+    def test_offset_rejects_open_contour(self):
+        """offset_segments должен возвращать [] для незамкнутого контура."""
+        segments = [
+            make_line((0, 0), (10, 0)),
+            make_line((10, 0), (10, 10)),
+            make_line((10, 10), (0, 10)),
+            # Не замкнут
+        ]
+        result = offset_segments(segments, 1.0, outward=True)
+        assert result == []
+
+    def test_insert_tabs_rejects_open_contour(self):
+        """insert_tabs должен возвращать [] для незамкнутого контура."""
+        segments = [
+            make_line((0, 0), (10, 0)),
+            make_line((10, 0), (10, 10)),
+            make_line((10, 10), (0, 10)),
+            # Не замкнут
+        ]
+        result = insert_tabs(segments, n_tabs=2, tab_width=1.0)
+        assert result == []
+
+    def test_offset_accepts_closed_contour(self):
+        """offset_segments должен работать с замкнутым контуром."""
+        segments = [
+            make_line((0, 0), (10, 0)),
+            make_line((10, 0), (10, 10)),
+            make_line((10, 10), (0, 10)),
+            make_line((0, 10), (0, 0)),
+        ]
+        result = offset_segments(segments, 1.0, outward=True)
+        assert len(result) > 0
+
+    def test_insert_tabs_accepts_closed_contour(self):
+        """insert_tabs должен работать с замкнутым контуром."""
+        segments = [
+            make_line((0, 0), (10, 0)),
+            make_line((10, 0), (10, 10)),
+            make_line((10, 10), (0, 10)),
+            make_line((0, 10), (0, 0)),
+        ]
+        result = insert_tabs(segments, n_tabs=2, tab_width=1.0)
+        assert len(result) > 0
