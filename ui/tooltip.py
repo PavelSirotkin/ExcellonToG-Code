@@ -29,7 +29,10 @@ def _tooltip_show(canvas_x, canvas_y, text):
     tw.wm_overrideredirect(True)
     tw.wm_geometry(f"+{rx}+{ry}")
     tw.attributes("-topmost", True)
-    lbl = tk.Label(tw, text=text, background="#FFFFE0", relief="solid",
+    lbl = tk.Label(tw, text=text,
+                   background=cfg.get_color("tooltip_bg"),
+                   foreground=cfg.get_color("tooltip_fg"),
+                   relief="solid",
                    borderwidth=1, font=("Courier", 9), justify="left", padx=4, pady=2)
     lbl.pack()
     cfg._tooltip_window = tw

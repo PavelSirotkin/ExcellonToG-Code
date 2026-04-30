@@ -98,9 +98,9 @@ def draw_rulers(canvas):
             continue
         real_x = to_real_x(x_mm)
         if wa_x1 <= real_x <= wa_x2:
-            canvas.create_line(real_x, ruler_y, real_x, ruler_y + 10, fill="black")
+            canvas.create_line(real_x, ruler_y, real_x, ruler_y + 10, fill=cfg.get_color("ruler_fg"))
             canvas.create_text(real_x, ruler_y + 15,
-                               text=f"{x_mm:.0f}", anchor="n", font=("Arial", 8))
+                               text=f"{x_mm:.0f}", anchor="n", font=("Arial", 8), fill=cfg.get_color("ruler_fg"))
 
     visible_start_y = cfg.offset_y - (cfg.WORKAREA_HEIGHT / (2 * cfg.scale_factor))
     visible_end_y = cfg.offset_y + (cfg.WORKAREA_HEIGHT / (2 * cfg.scale_factor))
@@ -112,9 +112,9 @@ def draw_rulers(canvas):
             continue
         real_y = to_real_y(y_mm)
         if wa_y1 <= real_y <= wa_y2:
-            canvas.create_line(wa_x1 - 20, real_y, wa_x1 - 10, real_y, fill="black")
+            canvas.create_line(wa_x1 - 20, real_y, wa_x1 - 10, real_y, fill=cfg.get_color("ruler_fg"))
             canvas.create_text(wa_x1 - 25, real_y,
-                               text=f"{y_mm:.0f}", anchor="e", font=("Arial", 8))
+                               text=f"{y_mm:.0f}", anchor="e", font=("Arial", 8), fill=cfg.get_color("ruler_fg"))
 
 
 def redraw_grid(event=None):
@@ -137,8 +137,8 @@ def redraw_grid(event=None):
 
     canvas.create_rectangle(0, 0, cfg.CANVAS_WIDTH + cfg.BACKGROUND_PAD,
                             cfg.CANVAS_HEIGHT + cfg.BACKGROUND_PAD,
-                            fill="#F0F0F0", outline="")
-    canvas.create_rectangle(wa_x1, wa_y1, wa_x2, wa_y2, fill="white", outline="")
+                            fill=cfg.get_color("canvas_bg"), outline="")
+    canvas.create_rectangle(wa_x1, wa_y1, wa_x2, wa_y2, fill=cfg.get_color("workarea_bg"), outline="")
 
     grid_step_mm = get_grid_step_mm()
     visible_start_x = cfg.offset_x - (cfg.WORKAREA_WIDTH / (2 * cfg.scale_factor))
@@ -148,7 +148,7 @@ def redraw_grid(event=None):
     for x_mm in range(first_line_x, last_line_x + 1, grid_step_mm):
         real_x = to_real_x(x_mm)
         if wa_x1 <= real_x <= wa_x2:
-            canvas.create_line(real_x, wa_y1, real_x, wa_y2, fill="lightgray")
+            canvas.create_line(real_x, wa_y1, real_x, wa_y2, fill=cfg.get_color("grid_fg"))
 
     visible_start_y = cfg.offset_y - (cfg.WORKAREA_HEIGHT / (2 * cfg.scale_factor))
     visible_end_y = cfg.offset_y + (cfg.WORKAREA_HEIGHT / (2 * cfg.scale_factor))
@@ -157,7 +157,7 @@ def redraw_grid(event=None):
     for y_mm in range(first_line_y, last_line_y + 1, grid_step_mm):
         real_y = to_real_y(y_mm)
         if wa_y1 <= real_y <= wa_y2:
-            canvas.create_line(wa_x1, real_y, wa_x2, real_y, fill="lightgray")
+            canvas.create_line(wa_x1, real_y, wa_x2, real_y, fill=cfg.get_color("grid_fg"))
 
     colors = cfg.HOLE_COLORS
     slot_colors = cfg.SLOT_COLORS
@@ -175,7 +175,7 @@ def redraw_grid(event=None):
                     if is_hovered:
                         canvas.create_oval(real_x - 6, real_y - 6,
                                            real_x + 6, real_y + 6,
-                                           fill="", outline="white", width=3)
+                                           fill="", outline=cfg.get_color("selected_outline"), width=3)
                         canvas.create_oval(real_x - 5, real_y - 5,
                                            real_x + 5, real_y + 5,
                                            fill=color, outline=color)
@@ -224,7 +224,7 @@ def redraw_grid(event=None):
                     if clipped_h[0] is not None:
                         canvas.create_line(clipped_h[0], clipped_h[1],
                                            clipped_h[2], clipped_h[3],
-                                           fill="white", width=line_w + 4,
+                                           fill=cfg.get_color("selected_outline"), width=line_w + 4,
                                            capstyle=tk.ROUND)
                 clipped = clip_line(real_sx, real_sy, real_ex, real_ey,
                                     wa_x1, wa_y1, wa_x2, wa_y2)
@@ -277,9 +277,9 @@ def redraw_grid(event=None):
                 # Красный круг радиуса 8 px
                 canvas.create_oval(real_x - 8, real_y - 8,
                                    real_x + 8, real_y + 8,
-                                   fill="", outline="red", width=2)
+                                   fill="", outline=cfg.get_color("violation"), width=2)
 
-    canvas.create_rectangle(wa_x1, wa_y1, wa_x2, wa_y2, outline="black", width=2)
+    canvas.create_rectangle(wa_x1, wa_y1, wa_x2, wa_y2, outline=cfg.get_color("ruler_fg"), width=2)
     draw_rulers(canvas)
 
 
@@ -308,4 +308,8 @@ def _draw_board_outline(canvas, wa_x1, wa_y1, wa_x2, wa_y2):
         if clipped[0] is not None:
             canvas.create_line(clipped[0], clipped[1],
                                clipped[2], clipped[3],
-                               fill="#444444", width=2)
+                               fill=cfg.get_color("outline_path"), width=2)
+
+
+# Регистрация listener для перерисовки при смене темы
+cfg.register_theme_listener(redraw_grid)

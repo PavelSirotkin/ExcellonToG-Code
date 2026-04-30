@@ -3,7 +3,9 @@
 """
 import math
 import tkinter as tk
+from ui import themed_messagebox as messagebox
 from core.gcode_parser import parse_gcode_for_viz
+from core.i18n import t
 import core.config as cfg
 
 # Кабинетная проекция: угол 30°, коэффициент глубины 0.45
@@ -46,7 +48,7 @@ def redraw_viz(play_idx=None):
     segs = cfg.viz_gcode_lines
     if not segs:
         canvas.create_text(cfg.CANVAS_WIDTH // 2, cfg.CANVAS_HEIGHT // 2,
-                           text="Нет данных G-code", fill="gray",
+                           text=t("viz.no_data"), fill="gray",
                            font=("Arial", 14))
         return
 
@@ -227,14 +229,15 @@ def viz_player_step():
     if cfg.viz_play_index > n:
         cfg.viz_play_index = n
         cfg.viz_playing = False
-        cfg.get_widget("viz_btn_play").config(text="▶")
+        cfg.get_widget("viz_btn_play").config(text=t("viz.btn.play"))
         _viz_slider_set(n)
         redraw_viz(n)
         return
 
     redraw_viz(cfg.viz_play_index)
     _viz_slider_set(cfg.viz_play_index)
-    cfg.get_widget("viz_pos_label").config(text=f"{cfg.viz_play_index} / {n}")
+    cfg.get_widget("viz_pos_label").config(
+        text=t("viz.lbl.position", current=cfg.viz_play_index, total=n))
 
     delay = max(10, int(300 / cfg.get_widget("viz_speed_var").get()))
     cfg.viz_after_id = cfg.get_widget("canvas").after(delay, viz_player_step)
@@ -246,12 +249,12 @@ def viz_play_pause():
         cfg.viz_playing = False
         if cfg.viz_after_id:
             cfg.get_widget("canvas").after_cancel(cfg.viz_after_id)
-        cfg.get_widget("viz_btn_play").config(text="▶")
+        cfg.get_widget("viz_btn_play").config(text=t("viz.btn.play"))
     else:
         if cfg.viz_play_index >= len(cfg.viz_gcode_lines):
             viz_stop()
         cfg.viz_playing = True
-        cfg.get_widget("viz_btn_play").config(text="⏸")
+        cfg.get_widget("viz_btn_play").config(text=t("viz.btn.pause"))
         viz_player_step()
 
 
@@ -261,7 +264,7 @@ def viz_stop():
     if cfg.viz_after_id:
         cfg.get_widget("canvas").after_cancel(cfg.viz_after_id)
     cfg.viz_play_index = 0
-    cfg.get_widget("viz_btn_play").config(text="▶")
+    cfg.get_widget("viz_btn_play").config(text=t("viz.btn.play"))
     _viz_slider_set(0)
     redraw_viz(0)
 
@@ -276,7 +279,7 @@ def enter_viz_mode():
     cfg.viz_mode = True
     cfg.viz_play_index = 0
     cfg.viz_playing = False
-    cfg.get_widget("viz_btn_play").config(text="▶")
+    cfg.get_widget("viz_btn_play").config(text=t("viz.btn.play"))
 
     # Автомасштаб — вписать плату в 85% рабочей области
     segs = cfg.viz_gcode_lines
@@ -296,7 +299,7 @@ def enter_viz_mode():
     _viz_slider_set(0)
 
     cfg.get_widget("viz_player_frame").pack(side="bottom", fill="x", before=cfg.get_widget("canvas"))
-    cfg.get_widget("btn_visualize").config(text="◀ Назад")
+    cfg.get_widget("btn_visualize").config(text=t("viz.btn.back"))
 
     # Переключаем мышь на визуализатор
     canvas = cfg.get_widget("canvas")
@@ -311,7 +314,7 @@ def enter_viz_mode():
                     type('Event', (), {'delta': -120, 'x': e.x, 'y': e.y})()))
 
     redraw_viz(n)
-    cfg.get_widget("status_label").config(text=f"Режим визуализации | {n} сегментов G-code")
+    cfg.get_widget("status_label").config(text=t("viz.status.mode", n=n))
 
 
 def on_viz_mousewheel(event):
@@ -349,7 +352,7 @@ def exit_viz_mode():
     if cfg.viz_after_id:
         cfg.get_widget("canvas").after_cancel(cfg.viz_after_id)
     cfg.get_widget("viz_player_frame").pack_forget()
-    cfg.get_widget("btn_visualize").config(text="🎬 Визуализация G-code")
+    cfg.get_widget("btn_visualize").config(text=t("app.btn.visualize"))
 
     # Возвращаем оригинальные биндинги мыши (сохранённые при инициализации)
     canvas = cfg.get_widget("canvas")
@@ -366,7 +369,7 @@ def exit_viz_mode():
 
     from ui.renderer import redraw_grid
     redraw_grid()
-    cfg.get_widget("status_label").config(text="Режим просмотра")
+    cfg.get_widget("status_label").config(text=t("viz.status.view"))
 
 
 def toggle_viz_mode():
@@ -375,8 +378,7 @@ def toggle_viz_mode():
         exit_viz_mode()
     else:
         if not cfg.viz_gcode_lines:
-            from tkinter import messagebox
-            messagebox.showwarning("Визуализация", "Сначала сгенерируйте G-код.")
+            messagebox.showwarning(t("viz.warning.title"), t("viz.warning.msg"))
             return
         enter_viz_mode()
 
@@ -386,4 +388,4 @@ def _store_gcode_for_viz(gcode_text):
     cfg.viz_gcode_lines = parse_gcode_for_viz(gcode_text)
     cfg.get_widget("btn_visualize").config(state="normal")
     cfg.get_widget("status_label").config(
-        text=f"G-code готов ({len(cfg.viz_gcode_lines)} сег.). Нажмите «Визуализация».")
+        text=t("viz.status.ready", n=len(cfg.viz_gcode_lines)))

@@ -2,10 +2,20 @@
 Легенда инструментов: отображение, чекбоксы, контекстное меню, hover/solo.
 """
 import tkinter as tk
+from core.i18n import t
 import core.config as cfg
 
 # Переменная чекбокса видимости контура — создаётся в update_legend, используется в toggle_tool_visibility
 _outline_var = None
+
+
+def _unregister_widget_recursive(widget):
+    """Рекурсивно отменить регистрацию виджета и всех его дочерних виджетов."""
+    # Сначала обработать дочерние виджеты
+    for child in widget.winfo_children():
+        _unregister_widget_recursive(child)
+    # Затем отменить регистрацию самого виджета
+    cfg.unregister_themed_widget(widget)
 
 
 def toggle_tool_visibility(tool, tool_type):
@@ -43,19 +53,21 @@ def update_legend():
     _outline_var = None
 
     legend_frame = cfg.get_widget("legend_frame")
+    # Отменить регистрацию виджетов перед уничтожением для предотвращения утечки памяти
     for widget in legend_frame.winfo_children():
+        _unregister_widget_recursive(widget)
         widget.destroy()
     colors = cfg.HOLE_COLORS
     slot_colors = cfg.SLOT_COLORS
 
     def make_context_menu(event):
         menu = tk.Menu(cfg.get_widget("root"), tearoff=0)
-        menu.add_command(label="✅ Показать все",
+        menu.add_command(label=t("legend.menu.show_all"),
                          command=lambda: legend_show_all())
-        menu.add_command(label="🚫 Скрыть все",
+        menu.add_command(label=t("legend.menu.hide_all"),
                          command=lambda: legend_hide_all())
         menu.add_separator()
-        menu.add_command(label="❌ Отмена изоляции",
+        menu.add_command(label=t("legend.menu.cancel_solo"),
                          command=lambda: legend_cancel_solo())
         try:
             menu.tk_popup(event.x_root, event.y_root)
@@ -137,14 +149,14 @@ def update_legend():
         else:
             cfg.solo_tool = (tool, tool_type)
             if cfg.current_tools:
-                for t, d in cfg.current_tools.items():
-                    vis = (tool_type == 'holes' and t == tool)
+                for tk, d in cfg.current_tools.items():
+                    vis = (tool_type == 'holes' and tk == tool)
                     d['visible'] = vis
                     if d['var']:
                         d['var'].set(vis)
             if cfg.slot_tools:
-                for t, d in cfg.slot_tools.items():
-                    vis = (tool_type == 'slots' and t == tool)
+                for tk, d in cfg.slot_tools.items():
+                    vis = (tool_type == 'slots' and tk == tool)
                     d['visible'] = vis
                     if d['var']:
                         d['var'].set(vis)
@@ -164,22 +176,28 @@ def update_legend():
         frame = tk.Frame(parent, cursor="hand2")
         frame.pack(anchor="w", fill="x", padx=2, pady=1)
         legend_rows[(tool, tool_type)] = frame
+        cfg.register_themed_widget(frame, bg="panel_bg")
 
         var = tk.BooleanVar(value=data['visible'])
         data['var'] = var
         cb = tk.Checkbutton(frame, variable=var,
                             command=lambda t=tool, tt=tool_type: toggle_tool_visibility(t, tt))
         cb.pack(side="left")
+        cfg.register_themed_widget(cb, bg="panel_bg", fg="panel_fg", selectcolor="entry_bg")
 
         solo_btn = tk.Label(frame, text="👁", font=("Arial", 9), cursor="hand2",
                             relief="flat", padx=2)
         solo_btn.pack(side="left")
         solo_btn.bind("<Button-1>",
                       lambda e, t=tool, tt=tool_type: on_solo_click(t, tt))
+        cfg.register_themed_widget(solo_btn, bg="panel_bg", fg="panel_fg")
 
-        tk.Label(frame, text=icon_text, fg=color, font=("Arial", 12)).pack(side="left")
+        icon_lbl = tk.Label(frame, text=icon_text, fg=color, font=("Arial", 12))
+        icon_lbl.pack(side="left")
+        cfg.register_themed_widget(icon_lbl, bg="panel_bg")
         lbl = tk.Label(frame, text=label_text, font=("Arial", 9))
         lbl.pack(side="left")
+        cfg.register_themed_widget(lbl, bg="panel_bg", fg="panel_fg")
 
         for w in [frame, cb, solo_btn, lbl]:
             w.bind("<Enter>", lambda e, t=tool, tt=tool_type: on_row_enter(e, t, tt))
@@ -191,36 +209,41 @@ def update_legend():
     legend_frame.bind("<Button-3>", make_context_menu)
 
     if cfg.current_tools:
-        hdr = tk.Label(legend_frame, text="Круглые отверстия:",
+        hdr = tk.Label(legend_frame, text=t("legend.section.holes"),
                        font=("Arial", 9, "bold"))
         hdr.pack(anchor="w")
+        cfg.register_themed_widget(hdr, bg="panel_bg", fg="panel_fg")
         hdr.bind("<Button-3>", make_context_menu)
         for i, (tool, data) in enumerate(cfg.current_tools.items()):
             color = colors[i % len(colors)]
-            text = f"T{tool} ⌀{data['diameter']:.2f}мм ({len(data['holes'])} отв.)"
+            text = t("legend.row.holes", tool=tool, diameter=data['diameter'], count=len(data['holes']))
             _build_row(legend_frame, tool, data, color, "●", text, 'holes')
 
     if cfg.slot_tools:
         sp = tk.Label(legend_frame, text="")
         sp.pack()
+        cfg.register_themed_widget(sp, bg="panel_bg")
         sp.bind("<Button-3>", make_context_menu)
-        hdr2 = tk.Label(legend_frame, text="Овальные отверстия (слоты):",
+        hdr2 = tk.Label(legend_frame, text=t("legend.section.slots"),
                         font=("Arial", 9, "bold"))
         hdr2.pack(anchor="w")
+        cfg.register_themed_widget(hdr2, bg="panel_bg", fg="panel_fg")
         hdr2.bind("<Button-3>", make_context_menu)
         for i, (tool, data) in enumerate(cfg.slot_tools.items()):
             color = slot_colors[i % len(slot_colors)]
-            text = f"T{tool} ⌀{data['diameter']:.2f}мм ({len(data['slots'])} слот.)"
+            text = t("legend.row.slots", tool=tool, diameter=data['diameter'], count=len(data['slots']))
             _build_row(legend_frame, tool, data, color, "━", text, 'slots')
 
     # Контур платы (Gerber outline) — если загружен
     if cfg.board_outline:
         sp3 = tk.Label(legend_frame, text="")
         sp3.pack()
+        cfg.register_themed_widget(sp3, bg="panel_bg")
         sp3.bind("<Button-3>", make_context_menu)
-        hdr3 = tk.Label(legend_frame, text="Обрезка по контуру:",
+        hdr3 = tk.Label(legend_frame, text=t("legend.section.outline"),
                         font=("Arial", 9, "bold"))
         hdr3.pack(anchor="w")
+        cfg.register_themed_widget(hdr3, bg="panel_bg", fg="panel_fg")
         hdr3.bind("<Button-3>", make_context_menu)
 
         # Считываем параметры обрезки из Entry-виджетов
@@ -235,7 +258,7 @@ def update_legend():
 
         # Фиктивный data-словарь для переиспользования _build_row
         outline_data = {'visible': cfg.board_outline_visible, 'var': None}
-        text = f"⌀{outline_d:.2f}мм  (фреза, {n_tabs} tabs)"
+        text = t("legend.row.outline", diameter=outline_d, n_tabs=n_tabs)
         _build_row(legend_frame, 'outline', outline_data,
                    "#444444", "▭", text, 'outline')
         # Запоминаем созданную переменную для toggle_tool_visibility
@@ -244,13 +267,15 @@ def update_legend():
     if cfg.current_tools or cfg.slot_tools or cfg.board_outline:
         sp2 = tk.Label(legend_frame, text="")
         sp2.pack()
+        cfg.register_themed_widget(sp2, bg="panel_bg")
         sp2.bind("<Button-3>", make_context_menu)
         total_holes = sum(len(d['holes']) for d in cfg.current_tools.values()) if cfg.current_tools else 0
         total_slots = sum(len(d['slots']) for d in cfg.slot_tools.values()) if cfg.slot_tools else 0
         ft = tk.Label(legend_frame,
-                      text=f"Всего: {total_holes} отв. + {total_slots} слот.",
+                      text=t("legend.total", holes=total_holes, slots=total_slots),
                       font=("Arial", 9, "bold"))
         ft.pack(anchor="w")
+        cfg.register_themed_widget(ft, bg="panel_bg", fg="panel_fg")
         ft.bind("<Button-3>", make_context_menu)
 
     def _refresh_legend_highlight():
@@ -260,13 +285,13 @@ def update_legend():
             is_hovered = (cfg.hovered_tool == key)
 
             if is_hovered and not is_solo_active:
-                bg = "#D0E8FF"
+                bg = cfg.get_color("highlight_hover")
             elif is_this_solo:
-                bg = "#C8F0C8"
+                bg = cfg.get_color("highlight_solo")
             elif is_solo_active and not is_this_solo:
-                bg = "#F0F0F0"
+                bg = cfg.get_color("highlight_inactive")
             else:
-                bg = frame.master.cget("bg") if frame.master else "SystemButtonFace"
+                bg = frame.master.cget("bg") if frame.master else cfg.get_color("panel_bg")
 
             frame.config(bg=bg)
             for w in frame.winfo_children():
@@ -275,6 +300,9 @@ def update_legend():
                 except Exception:
                     pass
 
+    # Применить начальную подсветку
+    _refresh_legend_highlight()
+    
     # Привязка прокрутки
     legend_canvas = cfg.get_widget("legend_canvas")
     if legend_canvas:

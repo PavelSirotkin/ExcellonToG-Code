@@ -2,10 +2,12 @@
 Вспомогательные функции для работы с UI виджетами.
 """
 import os
-from tkinter import messagebox, filedialog
+from tkinter import filedialog
+from ui import themed_messagebox as messagebox
 from core.parser import detect_coordinate_format, is_excellon_file, parse_excellon_file, parse_slot_file
 from core.gerber_parser import parse_gerber_outline, is_gerber_file
 from core.validators import validate_file_exists, validate_file_readable
+from core.i18n import t
 import core.config as cfg
 
 _last_dir: str = ""
@@ -15,12 +17,10 @@ def _check_format_conflict(detected_format):
     """Проверить конфликт форматов с уже загруженным файлом.
     Возвращает формат, который следует использовать."""
     if detected_format and cfg.coordinate_format and detected_format != cfg.coordinate_format:
-        messagebox.showwarning(
-            "Несовпадение форматов",
-            f"Формат координат нового файла ({detected_format}) отличается "
-            f"от текущего ({cfg.coordinate_format}).\n\n"
-            f"Будет использован формат {cfg.coordinate_format}."
-        )
+        msg = t("app.err.format_conflict.msg", 
+                detected=detected_format, 
+                current=cfg.coordinate_format)
+        messagebox.showwarning(t("app.err.format_conflict.title"), msg)
         return cfg.coordinate_format
     return detected_format or cfg.coordinate_format
 
@@ -33,7 +33,7 @@ def _reload_all():
         if cfg.slot_filename:
             cfg.slot_tools = parse_slot_file(cfg.slot_filename)
     except Exception as e:
-        messagebox.showerror("Ошибка", f"Ошибка парсинга: {str(e)}")
+        messagebox.showerror(t("app.dlg.error"), t("app.err.parsing", error=str(e)))
         return
 
     from ui.navigation import auto_fit_scale
@@ -49,15 +49,15 @@ def choose_file():
     global _last_dir
     filename = filedialog.askopenfilename(
         initialdir=_last_dir or None,
-        filetypes=[("Excellon files", "*.txt;*.drl"), ("All files", "*.*")]
+        filetypes=[(t("app.filetype.excellon"), "*.txt;*.drl"), (t("app.filetype.all"), "*.*")]
     )
     if not filename:
         return
     if not validate_file_exists(filename) or not validate_file_readable(filename):
-        messagebox.showerror("Ошибка", "Файл недоступен.")
+        messagebox.showerror(t("app.dlg.error"), t("app.err.file_unavailable"))
         return
     if not is_excellon_file(filename):
-        messagebox.showerror("Ошибка", "Неверный формат файла.")
+        messagebox.showerror(t("app.dlg.error"), t("app.err.invalid_format"))
         return
 
     detected = detect_coordinate_format(filename)
@@ -71,15 +71,14 @@ def choose_file():
         cfg.get_widget("format_combobox").set(fmt)
 
     cfg.current_filename = filename
-    cfg.get_widget("holes_file_label").config(text=f"Отверстия: {os.path.basename(filename)}")
+    cfg.get_widget("holes_file_label").config(text=t("app.lbl.holes_file", filename=os.path.basename(filename)))
     _reload_all()
     if not cfg.current_tools:
-        messagebox.showwarning("Предупреждение",
-                               "Файл не содержит данных об инструментах.")
+        messagebox.showwarning(t("app.dlg.warning"), t("app.err.no_tools"))
         cfg.current_filename = None
         return
     _last_dir = os.path.dirname(filename)
-    cfg.get_widget("status_label").config(text=f"Загружен: {os.path.basename(filename)}")
+    cfg.get_widget("status_label").config(text=t("app.status.loaded", filename=os.path.basename(filename)))
 
 
 def choose_slot_file():
@@ -87,15 +86,15 @@ def choose_slot_file():
     global _last_dir
     filename = filedialog.askopenfilename(
         initialdir=_last_dir or None,
-        filetypes=[("Excellon Slot files", "*.txt;*.drl"), ("All files", "*.*")]
+        filetypes=[(t("app.filetype.slot"), "*.txt;*.drl"), (t("app.filetype.all"), "*.*")]
     )
     if not filename:
         return
     if not validate_file_exists(filename) or not validate_file_readable(filename):
-        messagebox.showerror("Ошибка", "Файл недоступен.")
+        messagebox.showerror(t("app.dlg.error"), t("app.err.file_unavailable"))
         return
     if not is_excellon_file(filename):
-        messagebox.showerror("Ошибка", "Неверный формат файла.")
+        messagebox.showerror(t("app.dlg.error"), t("app.err.invalid_format"))
         return
 
     detected = detect_coordinate_format(filename)
@@ -109,15 +108,14 @@ def choose_slot_file():
         cfg.get_widget("format_combobox").set(fmt)
 
     cfg.slot_filename = filename
-    cfg.get_widget("slot_file_label").config(text=f"Слоты: {os.path.basename(filename)}")
+    cfg.get_widget("slot_file_label").config(text=t("app.lbl.slots_file", filename=os.path.basename(filename)))
     _reload_all()
     if not cfg.slot_tools:
-        messagebox.showwarning("Предупреждение",
-                               "Файл не содержит данных о слотах.")
+        messagebox.showwarning(t("app.dlg.warning"), t("app.err.no_slots"))
         cfg.slot_filename = None
         return
     _last_dir = os.path.dirname(filename)
-    cfg.get_widget("status_label").config(text=f"Слоты загружены: {os.path.basename(filename)}")
+    cfg.get_widget("status_label").config(text=t("app.status.slots_loaded", filename=os.path.basename(filename)))
 
 
 def on_format_change(event):
@@ -140,9 +138,9 @@ def on_mouse_move(event):
             cfg.WORKAREA_OFFSET_Y <= event.y <= cfg.WORKAREA_OFFSET_Y + cfg.WORKAREA_HEIGHT):
         vx = to_virtual_x(event.x)
         vy = to_virtual_y(event.y)
-        cfg.get_widget("coord_label").config(text=f"X: {vx:.2f} мм  Y: {vy:.2f} мм")
+        cfg.get_widget("coord_label").config(text=t("app.status.coord", x=vx, y=vy))
     else:
-        cfg.get_widget("coord_label").config(text="X: --- Y: ---")
+        cfg.get_widget("coord_label").config(text=t("app.status.coord_empty"))
 
 
 def on_canvas_resize(event):
@@ -160,29 +158,29 @@ def choose_outline_file():
     global _last_dir
     filename = filedialog.askopenfilename(
         initialdir=_last_dir or None,
-        filetypes=[("Gerber files", "*.gbr;*.gko;*.gm1;*.txt"), ("All files", "*.*")]
+        filetypes=[(t("app.filetype.gerber"), "*.gbr;*.gko;*.gm1;*.txt"), (t("app.filetype.all"), "*.*")]
     )
     if not filename:
         return
     if not validate_file_exists(filename) or not validate_file_readable(filename):
-        messagebox.showerror("Ошибка", "Файл недоступен.")
+        messagebox.showerror(t("app.dlg.error"), t("app.err.file_unavailable"))
         return
     if not is_gerber_file(filename):
-        messagebox.showerror("Ошибка", "Неверный формат файла. Ожидается Gerber RS-274X.")
+        messagebox.showerror(t("app.dlg.error"), t("app.err.invalid_gerber"))
         return
 
     try:
         segments, unit, bbox = parse_gerber_outline(filename)
         if not segments:
-            messagebox.showwarning("Предупреждение", "Файл не содержит данных о контуре.")
+            messagebox.showwarning(t("app.dlg.warning"), t("app.err.no_outline_data"))
             return
 
         cfg.board_outline = segments
         cfg.board_outline_filename = filename
         cfg.board_outline_unit = unit
-        cfg.get_widget("outline_file_label").config(text=f"Контур: {os.path.basename(filename)}")
+        cfg.get_widget("outline_file_label").config(text=t("app.lbl.outline_file", filename=os.path.basename(filename)))
         _last_dir = os.path.dirname(filename)
-        cfg.get_widget("status_label").config(text=f"Контур загружен: {os.path.basename(filename)}")
+        cfg.get_widget("status_label").config(text=t("app.status.outline_loaded", filename=os.path.basename(filename)))
 
         # Автозум и перерисовка (важно даже если сверловки/слоты не загружены)
         from ui.navigation import auto_fit_scale
@@ -193,7 +191,7 @@ def choose_outline_file():
         update_legend()
 
     except Exception as e:
-        messagebox.showerror("Ошибка", f"Ошибка парсинга Gerber: {str(e)}")
+        messagebox.showerror(t("app.dlg.error"), t("app.err.parsing_gerber", error=str(e)))
 
 
 def clear_outline():
@@ -202,8 +200,8 @@ def clear_outline():
     cfg.board_outline_filename = None
     cfg.board_outline_unit = "mm"
     cfg.outline_violations = []
-    cfg.get_widget("outline_file_label").config(text="Контур: не загружен")
-    cfg.get_widget("status_label").config(text="Контур удалён")
+    cfg.get_widget("outline_file_label").config(text=t("app.lbl.outline_not_loaded"))
+    cfg.get_widget("status_label").config(text=t("app.status.outline_cleared"))
 
     # Перецентровка на оставшихся данных (или сброс если их нет)
     from ui.navigation import auto_fit_scale

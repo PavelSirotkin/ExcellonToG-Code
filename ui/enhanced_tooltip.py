@@ -1,254 +1,147 @@
 """
 Улучшенные всплывающие подсказки для элементов интерфейса.
+
+Тексты подсказок локализованы — берутся через `core.i18n.t()` в момент показа.
 """
 import tkinter as tk
+from core.i18n import t
+import core.config as cfg
+
+
+# Список всех известных подсказок. Используется для проверки наличия ключа
+# (раньше код делал `if key in TOOLTIPS:` — теперь это `is_tooltip_key()`).
+_TOOLTIP_KEYS = frozenset({
+    "btn_open_excellon",
+    "btn_open_slots",
+    "btn_open_gerber",
+    "entry_safe_z",
+    "entry_drill_z",
+    "entry_feed_rate",
+    "entry_mill_feed",
+    "entry_rapid_rate",
+    "entry_park_z",
+    "mode_toggle",
+    "btn_gen_drilling",
+    "btn_gen_milling",
+    "btn_gen_combined",
+    "btn_gen_outline",
+    "btn_visualize",
+    "btn_statistics",
+    "btn_help",
+    "entry_outline_tool_diameter",
+    "entry_outline_depth_per_pass",
+    "entry_outline_n_tabs",
+    "entry_outline_tab_width",
+    "entry_outline_tab_height",
+    "combo_outline_direction",
+    "canvas",
+})
+
+
+class _TooltipsProxy:
+    """Прокси к локализованным подсказкам.
+
+    Позволяет писать `TOOLTIPS["btn_open_excellon"]` и `if key in TOOLTIPS`,
+    но за сценой — каждый запрос идёт через i18n, поэтому смена языка
+    мгновенно отражается в новых показах подсказок.
+    """
+
+    def __getitem__(self, key: str) -> str:
+        return t(f"tt.{key}")
+
+    def __contains__(self, key: str) -> bool:
+        return key in _TOOLTIP_KEYS
+
+    def get(self, key: str, default: str = "") -> str:
+        if key in _TOOLTIP_KEYS:
+            return t(f"tt.{key}")
+        return default
+
+
+TOOLTIPS = _TooltipsProxy()
 
 
 class EnhancedTooltip:
-    """
-    Улучшенная всплывающая подсказка с задержкой и форматированием.
-    """
-    
+    """Улучшенная всплывающая подсказка с задержкой и форматированием."""
+
     def __init__(self, widget, text, delay=500):
         """
         Args:
-            widget: Виджет, к которому привязывается подсказка
-            text: Текст подсказки
-            delay: Задержка перед показом в миллисекундах
+            widget: Виджет, к которому привязывается подсказка.
+            text: Либо готовый текст, либо callable, возвращающий текст
+                  (для динамической локализации). Также можно передать
+                  результат TOOLTIPS["..."] — он уже свежий на момент чтения.
+            delay: Задержка перед показом в миллисекундах.
         """
         self.widget = widget
-        self.text = text
+        self._text_provider = text
         self.delay = delay
         self.tooltip_window = None
         self.show_timer = None
-        
-        # Привязка событий
+
         self.widget.bind("<Enter>", self._on_enter)
         self.widget.bind("<Leave>", self._on_leave)
         self.widget.bind("<Button>", self._on_leave)
-    
+
+    @property
+    def text(self) -> str:
+        """Текущий текст подсказки (резолвится при каждом показе)."""
+        if callable(self._text_provider):
+            return self._text_provider()
+        return self._text_provider
+
     def _on_enter(self, event=None):
-        """Обработка наведения мыши."""
         self._cancel_timer()
         self.show_timer = self.widget.after(self.delay, self._show_tooltip)
-    
+
     def _on_leave(self, event=None):
-        """Обработка ухода мыши."""
         self._cancel_timer()
         self._hide_tooltip()
-    
+
     def _cancel_timer(self):
-        """Отмена таймера показа."""
         if self.show_timer:
             self.widget.after_cancel(self.show_timer)
             self.show_timer = None
-    
+
     def _show_tooltip(self):
         """Показать подсказку."""
-        if self.tooltip_window or not self.text:
+        text = self.text
+        if self.tooltip_window or not text:
             return
-        
-        # Получить позицию виджета
+
         x = self.widget.winfo_rootx() + 20
         y = self.widget.winfo_rooty() + self.widget.winfo_height() + 5
-        
-        # Создать окно подсказки
+
         self.tooltip_window = tk.Toplevel(self.widget)
         self.tooltip_window.wm_overrideredirect(True)
         self.tooltip_window.wm_geometry(f"+{x}+{y}")
-        
-        # Создать содержимое
-        frame = tk.Frame(self.tooltip_window, 
-                        background="#FFFACD", 
-                        relief="solid", 
-                        borderwidth=1)
+
+        frame = tk.Frame(self.tooltip_window,
+                         background=cfg.get_color("tooltip_bg"),
+                         relief="solid",
+                         borderwidth=1)
         frame.pack()
-        
-        label = tk.Label(frame, 
-                        text=self.text,
-                        background="#FFFACD",
-                        foreground="#000000",
-                        font=("Arial", 9),
-                        justify="left",
-                        padx=8,
-                        pady=6)
+
+        label = tk.Label(frame,
+                         text=text,
+                         background=cfg.get_color("tooltip_bg"),
+                         foreground=cfg.get_color("tooltip_fg"),
+                         font=("Arial", 9),
+                         justify="left",
+                         padx=8,
+                         pady=6)
         label.pack()
-        
-        # Добавить подсказку F1
+
         hint = tk.Label(frame,
-                       text="💡 Нажмите F1 для полной справки",
-                       background="#FFFACD",
-                       foreground="#666666",
-                       font=("Arial", 8, "italic"),
-                       padx=8,
-                       pady=2)
+                        text=t("tooltip.f1_hint"),
+                        background=cfg.get_color("tooltip_bg"),
+                        foreground=cfg.get_color("tooltip_hint_fg"),
+                        font=("Arial", 8, "italic"),
+                        padx=8,
+                        pady=2)
         hint.pack()
-    
+
     def _hide_tooltip(self):
-        """Скрыть подсказку."""
         if self.tooltip_window:
             self.tooltip_window.destroy()
             self.tooltip_window = None
-
-
-# Словарь подсказок для всех элементов интерфейса
-TOOLTIPS = {
-    # Кнопки загрузки файлов
-    "btn_open_excellon": (
-        "Загрузить файл Excellon с круглыми отверстиями.\n"
-        "Поддерживаемые форматы: .DRL, .TXT\n"
-        "Файл содержит координаты и диаметры отверстий."
-    ),
-    
-    "btn_open_slots": (
-        "Загрузить файл SlotHoles с овальными отверстиями.\n"
-        "Формат: начальная и конечная точка каждого слота.\n"
-        "Слоты фрезеруются, а не сверлятся."
-    ),
-    
-    "btn_open_gerber": (
-        "Загрузить контур платы в формате Gerber.\n"
-        "Используется для обрезки платы по контуру.\n"
-        "Обычно файл с суффиксом _Profile или .GKO"
-    ),
-    
-    # Параметры G-code
-    "entry_safe_z": (
-        "Безопасная высота для холостых перемещений.\n"
-        "Инструмент поднимается на эту высоту при переездах.\n"
-        "Типичное значение: 5 мм"
-    ),
-    
-    "entry_drill_z": (
-        "Глубина сверления (ОТРИЦАТЕЛЬНАЯ!).\n"
-        "Для платы 1.6 мм используйте -1.8 мм.\n"
-        "Запас 0.2 мм гарантирует сквозное сверление."
-    ),
-    
-    "entry_feed_rate": (
-        "Скорость погружения сверла в материал.\n"
-        "Для PCB: 100-200 мм/мин\n"
-        "Для алюминия: 50-100 мм/мин"
-    ),
-    
-    "entry_mill_feed": (
-        "Скорость фрезеровки слотов и контура.\n"
-        "Горизонтальное движение фрезы в материале.\n"
-        "Типичное значение: 150-300 мм/мин"
-    ),
-    
-    "entry_rapid_rate": (
-        "Скорость холостых перемещений (G0).\n"
-        "Быстрое перемещение между точками.\n"
-        "Типичное значение: 1000-3000 мм/мин"
-    ),
-    
-    "entry_park_z": (
-        "Высота парковки для смены инструмента.\n"
-        "После каждого инструмента станок паркуется в (0,0,Z).\n"
-        "Типичное значение: 20-50 мм"
-    ),
-    
-    # Переключатель режимов
-    "mode_toggle": (
-        "Переключение между простым и про режимом.\n"
-        "Простой: базовые параметры для быстрого старта.\n"
-        "Про: полный контроль с базой инструментов."
-    ),
-    
-    # Кнопки генерации
-    "btn_gen_drilling": (
-        "Генерация G-code только для круглых отверстий.\n"
-        "Использует команду G81 (цикл сверления).\n"
-        "Оптимизирует порядок сверления для экономии времени."
-    ),
-    
-    "btn_gen_milling": (
-        "Генерация G-code только для слотов.\n"
-        "Фрезерует овальные отверстия линейными движениями.\n"
-        "Требует загруженный файл SlotHoles."
-    ),
-    
-    "btn_gen_combined": (
-        "Объединённый G-code: сверление + фрезеровка.\n"
-        "Сначала все отверстия, затем все слоты.\n"
-        "Удобно для комплексной обработки платы."
-    ),
-    
-    "btn_gen_outline": (
-        "G-code для обрезки платы по контуру.\n"
-        "Требует загруженный файл Gerber с контуром.\n"
-        "Поддерживает держательные перемычки (tabs)."
-    ),
-    
-    # Визуализация
-    "btn_visualize": (
-        "Открыть окно визуализации траектории.\n"
-        "Показывает путь инструмента в 3D.\n"
-        "Позволяет проверить G-code перед запуском."
-    ),
-    
-    # Дополнительные кнопки
-    "btn_statistics": (
-        "Показать статистику проекта.\n"
-        "Размеры платы, количество отверстий,\n"
-        "длина пути и примерное время обработки."
-    ),
-    
-    "btn_help": (
-        "Открыть справочную систему.\n"
-        "Подробная документация по всем функциям.\n"
-        "Горячая клавиша: F1"
-    ),
-    
-    # Параметры контура
-    "entry_outline_tool_diameter": (
-        "Диаметр концевой фрезы для обрезки контура.\n"
-        "Траектория автоматически смещается наружу\n"
-        "на половину диаметра.\n"
-        "Типичное значение: 1–3 мм"
-    ),
-
-    "entry_outline_depth_per_pass": (
-        "Глубина снятия материала за один проход по Z.\n"
-        "Количество проходов до drill_z считается\n"
-        "автоматически.\n"
-        "Для FR-4 1.6 мм: 0.4–0.8 мм"
-    ),
-
-    "entry_outline_n_tabs": (
-        "Количество держательных перемычек (tabs).\n"
-        "Перемычки удерживают плату в заготовке\n"
-        "во время финишной обрезки.\n"
-        "Типичное значение: 2–6"
-    ),
-
-    "entry_outline_tab_width": (
-        "Длина перемычки вдоль контура платы.\n"
-        "Перемычки обламываются после обрезки.\n"
-        "Типичное значение: 2–5 мм"
-    ),
-
-    "entry_outline_tab_height": (
-        "Высота перемычки — недорез по Z.\n"
-        "Толщина материала, оставляемого под фрезой\n"
-        "в зоне перемычки.\n"
-        "Типичное значение: 0.5–1 мм"
-    ),
-
-    "combo_outline_direction": (
-        "Направление обхода контура.\n"
-        "CCW (против часовой) — climb для внешнего контура,\n"
-        "лучше качество края.\n"
-        "CW (по часовой) — conventional, стабильнее\n"
-        "на станках с люфтами."
-    ),
-    
-    # Canvas
-    "canvas": (
-        "Рабочая область визуализации.\n"
-        "Колесо мыши: масштаб\n"
-        "ЛКМ + движение: перемещение\n"
-        "Двойной клик: автозум"
-    ),
-}

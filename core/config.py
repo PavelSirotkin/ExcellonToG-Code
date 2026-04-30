@@ -3,6 +3,210 @@
 """
 
 # ==========================================================
+# Тёмная тема — палитры
+# ==========================================================
+THEME_LIGHT = {
+    # Фоны
+    "bg": "#F0F0F0",            # общий фон
+    "panel_bg": "#F0F0F0",       # фон LabelFrame, Frame
+    "panel_fg": "#000000",
+    "btn_bg": "#E0E0E0",         # обычные кнопки
+    "btn_fg": "#000000",
+    "entry_bg": "#FFFFFF",        # Entry, Text
+    "entry_fg": "#000000",
+    "canvas_bg": "#F0F0F0",       # фон canvas
+    "workarea_bg": "#FFFFFF",     # рабочая область платы
+    "ruler_fg": "#000000",        # деления линеек
+    "grid_fg": "lightgray",
+    # Сущности на canvas
+    "hole": "red",                # отверстия по умолчанию (если не выбран color из HOLE_COLORS)
+    "slot_path": "#444444",
+    "outline_path": "#444444",
+    "violation": "red",
+    "selected_outline": "white",
+    # Статус
+    "text_status": "#666666",
+    "text_muted": "#7F8C8D",
+    # Подсветка легенды
+    "highlight_hover": "#D0E8FF",
+    "highlight_solo": "#C8F0C8",
+    "highlight_inactive": "#F0F0F0",
+    # Tooltip
+    "tooltip_bg": "#FFFACD",
+    "tooltip_fg": "#000000",
+    "tooltip_hint_fg": "#666666",
+    # Кнопки генерации (зелёная/синяя/оранжевая/жёлтая)
+    "btn_gen_drilling": "#90EE90",
+    "btn_gen_milling": "#87CEEB",
+    "btn_gen_outline": "#FFA07A",
+    "btn_gen_combined": "#FFD700",
+    # Mode toggle
+    "mode_simple_bg": "#90EE90",
+    "mode_pro_bg": "#87CEEB",
+    # Stats окно
+    "stats_bg": "#F5F5F5",
+    "stats_header_bg": "#2C3E50",
+    "stats_header_fg": "white",
+    "stats_table_header_bg": "#34495E",
+    "stats_row_even": "#ECF0F1",
+    "stats_row_odd": "white",
+    "stats_summary_holes": "#27AE60",
+    "stats_summary_slots": "#E74C3C",
+    "stats_summary_outline": "#3498DB",
+    "stats_progress_bg": "#E0E0E0",
+    # Акценты
+    "accent_success": "#0a7a0a",
+}
+
+THEME_DARK = {
+    "bg": "#1E1E1E",
+    "panel_bg": "#252526",
+    "panel_fg": "#E0E0E0",
+    "btn_bg": "#3D3D3D",
+    "btn_fg": "#E0E0E0",
+    "entry_bg": "#2D2D2D",
+    "entry_fg": "#E0E0E0",
+    "canvas_bg": "#1A1A1A",
+    "workarea_bg": "#252526",
+    "ruler_fg": "#C0C0C0",
+    "grid_fg": "#3A3A3A",
+    "hole": "#FF6060",
+    "slot_path": "#888888",
+    "outline_path": "#888888",
+    "violation": "#FF6060",
+    "selected_outline": "#E0E0E0",
+    "text_status": "#A0A0A0",
+    "text_muted": "#7F8C8D",
+    "highlight_hover": "#264F78",
+    "highlight_solo": "#2D5A2D",
+    "highlight_inactive": "#2A2A2A",
+    "tooltip_bg": "#3F3F1F",
+    "tooltip_fg": "#E0E0E0",
+    "tooltip_hint_fg": "#A0A0A0",
+    "btn_gen_drilling": "#3A7A3A",
+    "btn_gen_milling": "#3D6F95",
+    "btn_gen_outline": "#7A4030",
+    "btn_gen_combined": "#807030",
+    "mode_simple_bg": "#3A7A3A",
+    "mode_pro_bg": "#3D6F95",
+    "stats_bg": "#252526",
+    "stats_header_bg": "#3D3D3D",
+    "stats_header_fg": "#E0E0E0",
+    "stats_table_header_bg": "#3D3D3D",
+    "stats_row_even": "#2D2D2D",
+    "stats_row_odd": "#252526",
+    "stats_summary_holes": "#3A7A3A",
+    "stats_summary_slots": "#A04040",
+    "stats_summary_outline": "#3D6F95",
+    "stats_progress_bg": "#3D3D3D",
+    "accent_success": "#5FD05F",
+}
+
+_THEMES = {"light": THEME_LIGHT, "dark": THEME_DARK}
+_current_theme_name = "light"
+_themed_widgets = []  # [(widget, role_dict)] — для обхода при смене темы
+_theme_listeners = []
+
+
+def get_color(role: str) -> str:
+    """Получить цвет по семантической роли в текущей теме."""
+    return _THEMES[_current_theme_name].get(role, "#FF00FF")  # magenta — индикатор пропуска
+
+
+def current_theme() -> str:
+    return _current_theme_name
+
+
+def register_themed_widget(widget, **role_map) -> None:
+    """Запомнить виджет с маппингом аргументов config → роль палитры.
+
+    Пример:
+        register_themed_widget(my_button, bg="btn_bg", fg="btn_fg")
+        # При apply_theme() вызовет: my_button.config(bg=get_color("btn_bg"), fg=get_color("btn_fg"))
+    """
+    if not role_map:
+        return
+    _themed_widgets.append((widget, dict(role_map)))
+    # Сразу применить
+    _apply_to_widget(widget, role_map)
+
+
+def unregister_themed_widget(widget) -> None:
+    """Удалить виджет из реестра тем перед его уничтожением.
+    
+    Предотвращает утечку памяти при многократном пересоздании виджетов.
+    """
+    global _themed_widgets
+    _themed_widgets = [(w, role_map) for w, role_map in _themed_widgets if w is not widget]
+
+
+def _apply_to_widget(widget, role_map):
+    try:
+        kwargs = {k: get_color(role) for k, role in role_map.items()}
+        widget.config(**kwargs)
+    except Exception:
+        # Виджет уничтожен или не поддерживает опцию — пропускаем
+        pass
+
+
+def register_theme_listener(callback) -> None:
+    if callback not in _theme_listeners:
+        _theme_listeners.append(callback)
+
+
+def unregister_theme_listener(callback) -> None:
+    if callback in _theme_listeners:
+        _theme_listeners.remove(callback)
+
+
+def apply_theme(name: str) -> None:
+    """Применить тему ко всем зарегистрированным виджетам и ttk-стилям."""
+    global _current_theme_name
+    if name not in _THEMES:
+        name = "light"
+    _current_theme_name = name
+
+    # Проход по плоским виджетам
+    for widget, role_map in list(_themed_widgets):
+        _apply_to_widget(widget, role_map)
+
+    # Уведомить листенеров — они занимаются ttk-стилями, canvas-перерисовкой и т.п.
+    for cb in list(_theme_listeners):
+        try:
+            cb()
+        except Exception:
+            pass
+
+
+def apply_window_theme(window) -> None:
+    """Применить темную тему к заголовку окна (Windows).
+    
+    Args:
+        window: Tk или Toplevel окно
+    """
+    try:
+        import ctypes
+        if _current_theme_name == "dark":
+            # DWMWA_USE_IMMERSIVE_DARK_MODE = 20
+            ctypes.windll.dwmapi.DwmSetWindowAttribute(
+                ctypes.windll.user32.GetParent(window.winfo_id()),
+                20,
+                ctypes.byref(ctypes.c_int(1)),
+                ctypes.sizeof(ctypes.c_int)
+            )
+        else:
+            # Сбросить на светлую тему
+            ctypes.windll.dwmapi.DwmSetWindowAttribute(
+                ctypes.windll.user32.GetParent(window.winfo_id()),
+                20,
+                ctypes.byref(ctypes.c_int(0)),
+                ctypes.sizeof(ctypes.c_int)
+            )
+    except Exception:
+        pass  # Не критично, если не получилось
+
+
+# ==========================================================
 # Константы отображения
 # ==========================================================
 CANVAS_WIDTH = 980
