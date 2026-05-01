@@ -30,6 +30,7 @@ Thumbs.db
 #*.spec
 CHANGES.md
 RELEASE_NOTES.md
+AUDIT_REPORT.md
 
 # Generated files (keep templates, ignore runtime data)
 !tool_base.json

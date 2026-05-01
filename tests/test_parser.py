@@ -154,3 +154,15 @@ class TestCoordinateFormatValidation:
         path = os.path.join(FIXTURES_DIR, 'test_slots.drl')
         with pytest.raises(ValueError, match="Неверный формат координат '42'"):
             parse_slot_file(path, coord_format="42")
+
+    def test_parse_excellon_zero_fractional_part(self):
+        """parse_excellon_file должен выбросить ValueError при нулевой дробной части."""
+        path = os.path.join(FIXTURES_DIR, 'test_3_3.drl')
+        with pytest.raises(ValueError, match="Дробная часть должна быть > 0"):
+            parse_excellon_file(path, coord_format="3.0")
+
+    def test_parse_slot_zero_fractional_part(self):
+        """parse_slot_file должен выбросить ValueError при нулевой дробной части."""
+        path = os.path.join(FIXTURES_DIR, 'test_slots.drl')
+        with pytest.raises(ValueError, match="Дробная часть должна быть > 0"):
+            parse_slot_file(path, coord_format="4.0")

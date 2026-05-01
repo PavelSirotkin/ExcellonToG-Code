@@ -50,12 +50,6 @@
     }
   },
   "endmills": {
-    "0.8": {
-      "diameter": 0.8,
-      "spindle_speed": 20000,
-      "cutting_feed": 50.0,
-      "stepover": 50.0
-    },
     "1.0": {
       "diameter": 1.0,
       "spindle_speed": 20000,
@@ -66,6 +60,12 @@
       "diameter": 2.0,
       "spindle_speed": 20000,
       "cutting_feed": 200.0,
+      "stepover": 50.0
+    },
+    "0.3": {
+      "diameter": 0.3,
+      "spindle_speed": 20000,
+      "cutting_feed": 50.0,
       "stepover": 50.0
     }
   }

@@ -1,6 +1,9 @@
 """
 Глобальное состояние и константы приложения ExcellonToG-Code.
 """
+import logging
+
+logger = logging.getLogger(__name__)
 
 # ==========================================================
 # Тёмная тема — палитры
@@ -144,9 +147,9 @@ def _apply_to_widget(widget, role_map):
     try:
         kwargs = {k: get_color(role) for k, role in role_map.items()}
         widget.config(**kwargs)
-    except Exception:
+    except Exception as e:
         # Виджет уничтожен или не поддерживает опцию — пропускаем
-        pass
+        logger.debug("Failed to apply theme to widget: %s", e)
 
 
 def register_theme_listener(callback) -> None:
@@ -174,15 +177,21 @@ def apply_theme(name: str) -> None:
     for cb in list(_theme_listeners):
         try:
             cb()
-        except Exception:
-            pass
+        except Exception as e:
+            logger.exception("Theme listener callback failed: %s", e)
 
 
 def apply_window_theme(window) -> None:
-    """Применить темную тему к заголовку окна (Windows).
+    """Применить темную тему к заголовку окна (Windows-only).
+    
+    Использует Windows DWM API для применения тёмной темы к рамке окна.
+    На Linux/macOS функция является no-op (не выполняет никаких действий).
     
     Args:
         window: Tk или Toplevel окно
+    
+    Note:
+        Windows-only; на других платформах молча игнорируется.
     """
     try:
         import ctypes
@@ -202,8 +211,9 @@ def apply_window_theme(window) -> None:
                 ctypes.byref(ctypes.c_int(0)),
                 ctypes.sizeof(ctypes.c_int)
             )
-    except Exception:
-        pass  # Не критично, если не получилось
+    except Exception as e:
+        # Не критично, если не получилось (не Windows или старая версия)
+        logger.debug("Failed to apply window theme: %s", e)
 
 
 # ==========================================================

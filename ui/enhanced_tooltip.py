@@ -82,6 +82,15 @@ class EnhancedTooltip:
         self.widget.bind("<Enter>", self._on_enter)
         self.widget.bind("<Leave>", self._on_leave)
         self.widget.bind("<Button>", self._on_leave)
+        # Иначе при пересоздании виджета (смена темы/языка) запланированный
+        # `after()` сработает на уже уничтоженном виджете и упадёт TclError.
+        self.widget.bind("<Destroy>", self._on_destroy, add="+")
+
+    def _on_destroy(self, event=None):
+        if event is not None and event.widget is not self.widget:
+            return
+        self._cancel_timer()
+        self._hide_tooltip()
 
     @property
     def text(self) -> str:

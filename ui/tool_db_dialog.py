@@ -7,7 +7,17 @@ from tkinter import ttk, filedialog
 from ui import themed_messagebox as messagebox
 from core.tool_database import ToolDatabase
 from core.i18n import t
+from core.path_validator import validate_save_path
 import core.config as cfg
+
+
+def _unregister_widget_recursive(widget):
+    """Рекурсивно отменить регистрацию виджета и всех его дочерних виджетов."""
+    # Сначала обработать дочерние виджеты
+    for child in widget.winfo_children():
+        _unregister_widget_recursive(child)
+    # Затем отменить регистрацию самого виджета
+    cfg.unregister_themed_widget(widget)
 
 
 def _apply_table_style(tree):
@@ -228,6 +238,12 @@ def show_tool_db_dialog(parent, tool_db: ToolDatabase):
             title=t("tool_db.dlg.export_title")
         )
         if filename:
+            # Проверка безопасности пути
+            is_valid, error_msg = validate_save_path(filename)
+            if not is_valid:
+                messagebox.showerror(t("app.dlg.error"), 
+                                   t("app.err.invalid_path", error=error_msg))
+                return
             if tool_db.save(filename):
                 messagebox.showinfo(t("tool_db.dlg.export_ok.title"), t("tool_db.dlg.export_ok.msg"))
             else:
@@ -254,9 +270,15 @@ def show_tool_db_dialog(parent, tool_db: ToolDatabase):
     cfg.register_themed_widget(btn_import, bg="btn_bg", fg="btn_fg")
     btn_import.pack(side="left", padx=2)
     
-    btn_close = tk.Button(btn_frame, text=t("app.dlg.close"), command=dlg.destroy)
+    def _on_close():
+        _unregister_widget_recursive(dlg)
+        dlg.destroy()
+    
+    btn_close = tk.Button(btn_frame, text=t("app.dlg.close"), command=_on_close)
     cfg.register_themed_widget(btn_close, bg="btn_bg", fg="btn_fg")
     btn_close.pack(side="right", padx=2)
+    
+    dlg.protocol("WM_DELETE_WINDOW", _on_close)
 
     # Заполнить
     _populate_drills()
@@ -345,9 +367,14 @@ def _edit_drill(tool_db: ToolDatabase, diameter, tree, dlg_parent=None):
             else:
                 tool_db.update_drill(d, **vals)
             _populate_tree_drills(tree, tool_db)
+            _unregister_widget_recursive(dlg)
             dlg.destroy()
         except ValueError as e:
             messagebox.showerror(t("app.dlg.error"), str(e), parent=dlg)
+    
+    def on_cancel():
+        _unregister_widget_recursive(dlg)
+        dlg.destroy()
 
     btn_f = tk.Frame(frm)
     cfg.register_themed_widget(btn_f, bg="panel_bg")
@@ -357,9 +384,11 @@ def _edit_drill(tool_db: ToolDatabase, diameter, tree, dlg_parent=None):
     cfg.register_themed_widget(btn_ok, bg="btn_bg", fg="btn_fg")
     btn_ok.pack(side="left", expand=True, padx=5)
     
-    btn_cancel = tk.Button(btn_f, text=t("app.dlg.cancel"), command=dlg.destroy, width=10)
+    btn_cancel = tk.Button(btn_f, text=t("app.dlg.cancel"), command=on_cancel, width=10)
     cfg.register_themed_widget(btn_cancel, bg="btn_bg", fg="btn_fg")
     btn_cancel.pack(side="left", expand=True, padx=5)
+    
+    dlg.protocol("WM_DELETE_WINDOW", on_cancel)
     
     # Центрирование и применение темы после создания всех виджетов
     dlg.update_idletasks()
@@ -446,9 +475,14 @@ def _edit_endmill(tool_db: ToolDatabase, diameter, tree, dlg_parent=None):
             else:
                 tool_db.update_endmill(d, **vals)
             _populate_tree_endmills(tree, tool_db)
+            _unregister_widget_recursive(dlg)
             dlg.destroy()
         except ValueError as e:
             messagebox.showerror(t("app.dlg.error"), str(e), parent=dlg)
+    
+    def on_cancel():
+        _unregister_widget_recursive(dlg)
+        dlg.destroy()
 
     btn_f = tk.Frame(frm)
     cfg.register_themed_widget(btn_f, bg="panel_bg")
@@ -458,9 +492,11 @@ def _edit_endmill(tool_db: ToolDatabase, diameter, tree, dlg_parent=None):
     cfg.register_themed_widget(btn_ok, bg="btn_bg", fg="btn_fg")
     btn_ok.pack(side="left", expand=True, padx=5)
     
-    btn_cancel = tk.Button(btn_f, text=t("app.dlg.cancel"), command=dlg.destroy, width=10)
+    btn_cancel = tk.Button(btn_f, text=t("app.dlg.cancel"), command=on_cancel, width=10)
     cfg.register_themed_widget(btn_cancel, bg="btn_bg", fg="btn_fg")
     btn_cancel.pack(side="left", expand=True, padx=5)
+    
+    dlg.protocol("WM_DELETE_WINDOW", on_cancel)
     
     # Центрирование и применение темы после создания всех виджетов
     dlg.update_idletasks()

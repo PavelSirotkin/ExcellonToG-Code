@@ -46,8 +46,16 @@ class GCodeParams:
     def set(self, key: str, value):
         self._data[key] = value
 
+    def set_param(self, key: str, value):
+        """Алиас для set (для совместимости с тестами)."""
+        self.set(key, value)
+
     def get_all(self) -> Dict[str, Any]:
         return dict(self._data)
+
+    def get_all_params(self) -> Dict[str, Any]:
+        """Алиас для get_all (для совместимости с тестами)."""
+        return self.get_all()
 
     def load(self, path: str = None) -> bool:
         """Загрузить параметры. Если файла нет — создать с default."""

@@ -4,7 +4,10 @@
 """
 import re
 import math
+import logging
 from typing import List, Dict, Tuple, Optional
+
+logger = logging.getLogger(__name__)
 
 
 # ==========================================================
@@ -239,11 +242,34 @@ def parse_gerber_outline(filename: str) -> Tuple[List[Dict], str, Tuple[float, f
     """
     parser = GerberParser()
 
-    with open(filename, 'r', encoding='utf-8', errors='ignore') as f:
-        for line in f:
-            # Убираем возможные переносы строк и пробелы
-            line = line.strip()
-            parser.parse_line(line)
+    try:
+        # Сначала пробуем UTF-8
+        with open(filename, 'r', encoding='utf-8') as f:
+            content = f.read()
+    except UnicodeDecodeError:
+        # Если не получилось, пробуем latin-1 (ISO-8859-1)
+        logger.warning("UTF-8 decode failed for %s, trying latin-1", filename)
+        try:
+            with open(filename, 'r', encoding='latin-1') as f:
+                content = f.read()
+        except UnicodeDecodeError as e:
+            logger.error("Failed to decode file %s with both UTF-8 and latin-1: %s", filename, e)
+            raise ValueError(f"Не удалось прочитать файл {filename}: проблема с кодировкой") from e
+    except PermissionError as e:
+        logger.error("Permission denied reading file %s: %s", filename, e)
+        raise PermissionError(f"Нет доступа к файлу {filename}") from e
+    except FileNotFoundError as e:
+        logger.error("File not found: %s", filename)
+        raise FileNotFoundError(f"Файл не найден: {filename}") from e
+    except OSError as e:
+        logger.error("OS error reading file %s: %s", filename, e)
+        raise OSError(f"Ошибка чтения файла {filename}: {e}") from e
+
+    # Парсим содержимое построчно
+    for line in content.splitlines():
+        # Убираем возможные переносы строк и пробелы
+        line = line.strip()
+        parser.parse_line(line)
 
     # Вычисляем bbox
     if not parser.segments:

@@ -2,14 +2,14 @@
 Геометрические операции с полигонами и контурами.
 """
 import math
-from typing import List, Dict, Tuple, Optional
+from typing import List, Dict, Tuple, Optional, Any
 
 
 # ==========================================================
 # Базовые операции
 # ==========================================================
 
-def bounding_box(segments: List[Dict]) -> Tuple[float, float, float, float]:
+def bounding_box(segments: List[Dict[str, Any]]) -> Tuple[float, float, float, float]:
     """Вычислить bounding box списка сегментов.
     Returns: (min_x, min_y, max_x, max_y)
     """
@@ -55,7 +55,7 @@ def normalize_to_ccw(points: List[Tuple[float, float]]) -> List[Tuple[float, flo
     return list(reversed(points))
 
 
-def is_closed_contour(segments: List[Dict], tol_mm: float = 1e-3) -> bool:
+def is_closed_contour(segments: List[Dict[str, Any]], tol_mm: float = 1e-3) -> bool:
     """Проверить, что контур замкнут (последняя точка совпадает с первой
     в пределах tol_mm).
 
@@ -72,10 +72,10 @@ def is_closed_contour(segments: List[Dict], tol_mm: float = 1e-3) -> bool:
     if not segments or len(segments) < 2:
         return False
 
-    def _seg_start(seg: Dict) -> Tuple[float, float]:
+    def _seg_start(seg: Dict[str, Any]) -> Tuple[float, float]:
         return seg['p1'] if seg['type'] == 'line' else seg['start']
 
-    def _seg_end(seg: Dict) -> Tuple[float, float]:
+    def _seg_end(seg: Dict[str, Any]) -> Tuple[float, float]:
         return seg['p2'] if seg['type'] == 'line' else seg['end']
 
     first = _seg_start(segments[0])
@@ -127,7 +127,7 @@ def point_in_polygon(point: Tuple[float, float],
 # Flatten arcs to chords
 # ==========================================================
 
-def flatten(segments: List[Dict], tol_mm: float = 0.02) -> List[Tuple[float, float]]:
+def flatten(segments: List[Dict[str, Any]], tol_mm: float = 0.02) -> List[Tuple[float, float]]:
     """
     Преобразовать сегменты в список точек (дуги → хорды).
     Возвращает список точек контура.
@@ -151,7 +151,7 @@ def flatten(segments: List[Dict], tol_mm: float = 0.02) -> List[Tuple[float, flo
     return points
 
 
-def _flatten_arc(arc: Dict, tol_mm: float) -> List[Tuple[float, float]]:
+def _flatten_arc(arc: Dict[str, Any], tol_mm: float) -> List[Tuple[float, float]]:
     """Аппроксимировать дугу хордами с заданной точностью."""
     center = arc['center']
     r = arc['r']
@@ -235,8 +235,8 @@ def _line_intersection(p1: Tuple[float, float], d1: Tuple[float, float],
     return (x1 + t * dx1, y1 + t * dy1)
 
 
-def offset_segments(segments: List[Dict], delta: float,
-                    outward: bool = True) -> List[Dict]:
+def offset_segments(segments: List[Dict[str, Any]], delta: float,
+                    outward: bool = True) -> List[Dict[str, Any]]:
     """
     Создать offset контура на расстояние delta.
     Для выпуклых углов — простое пересечение смещённых рёбер.
@@ -339,7 +339,7 @@ def offset_segments(segments: List[Dict], delta: float,
 # Tabs insertion
 # ==========================================================
 
-def segment_length(seg: Dict) -> float:
+def segment_length(seg: Dict[str, Any]) -> float:
     """Вычислить длину одного сегмента (линия или дуга).
 
     Для линии — евклидово расстояние между p1 и p2.
@@ -377,12 +377,12 @@ def segment_length(seg: Dict) -> float:
     return 0.0
 
 
-def compute_total_length(segments: List[Dict]) -> float:
+def compute_total_length(segments: List[Dict[str, Any]]) -> float:
     """Вычислить общую длину контура."""
     return sum(segment_length(seg) for seg in segments)
 
 
-def point_at_length(segments: List[Dict], target_length: float) -> Tuple[float, float]:
+def point_at_length(segments: List[Dict[str, Any]], target_length: float) -> Tuple[float, float]:
     """Найти точку на контуре на заданном расстоянии от начала."""
     current_length = 0.0
 
@@ -431,8 +431,8 @@ def point_at_length(segments: List[Dict], target_length: float) -> Tuple[float, 
         return last_seg['end']
 
 
-def insert_tabs(segments: List[Dict], n_tabs: int,
-                tab_width: float) -> List[Dict]:
+def insert_tabs(segments: List[Dict[str, Any]], n_tabs: int,
+                tab_width: float) -> List[Dict[str, Any]]:
     """
     Вставить держательные перемычки (tabs) в контур.
 
@@ -467,7 +467,7 @@ def insert_tabs(segments: List[Dict], n_tabs: int,
     # Собираем логические стороны контура с их кумулятивными длинами.
     # Каждый входной сегмент считается отдельной стороной (для outline-пути
     # это соответствует одному ребру offset-полигона).
-    sides: List[Dict] = []
+    sides: List[Dict[str, Any]] = []
     cum = 0.0
     for seg in segments:
         if seg['type'] == 'line':
@@ -558,7 +558,7 @@ def insert_tabs(segments: List[Dict], n_tabs: int,
                 return True
         return False
 
-    result: List[Dict] = []
+    result: List[Dict[str, Any]] = []
     current_length = 0.0
 
     for seg in segments:

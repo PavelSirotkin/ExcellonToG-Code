@@ -413,16 +413,29 @@ def _build_combined_gcode(current_tools, current_filename, slot_tools, slot_file
                                 for d in (current_tools or {}).values())
     has_visible_milling = any(d['visible'] and d['slots']
                                for d in (slot_tools or {}).values())
+    has_outline = bool(board_outline and outline_params)
+    
     if not has_visible_drilling and not has_visible_milling:
         errors.append(t("app.err.no_visible_tools"))
         return None, errors
 
+    # Формируем динамический заголовок в зависимости от того, что генерируется
+    operations = []
+    if has_visible_drilling:
+        operations.append("Drilling")
+    if has_visible_milling:
+        operations.append("Slot milling")
+    if has_outline:
+        operations.append("Board outline")
+    
     buf = io.StringIO()
-    buf.write("; G-Code — Combined: Drilling + Slot milling\n")
+    buf.write(f"; G-Code — Combined: {' + '.join(operations)}\n")
     if current_filename:
         buf.write(f"; Holes source: {os.path.basename(current_filename)}\n")
     if slot_filename:
         buf.write(f"; Slots source: {os.path.basename(slot_filename)}\n")
+    if board_outline and board_outline_filename:
+        buf.write(f"; Outline source: {os.path.basename(board_outline_filename)}\n")
     buf.write(f"; Milling feed: {mill_feed:.0f} mm/min\n")
     buf.write("G21 ; Metric\n")
     buf.write("G90 ; Absolute coordinates\n\n")

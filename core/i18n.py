@@ -11,9 +11,12 @@
 При отсутствии перевода ключ возвращается как есть, что упрощает отладку.
 """
 import json
+import logging
 import os
 import sys
 from typing import Dict, List, Optional
+
+logger = logging.getLogger(__name__)
 
 
 _DEFAULT_LANGUAGE = "ru"
@@ -40,11 +43,16 @@ def _load_strings(lang: str) -> Dict[str, str]:
     """Загрузить словарь строк для указанного языка."""
     path = _strings_path(lang)
     if not os.path.isfile(path):
+        logger.warning(f"Файл локализации не найден: {path}")
         return {}
     try:
         with open(path, "r", encoding="utf-8") as f:
             return json.load(f)
-    except (json.JSONDecodeError, IOError):
+    except json.JSONDecodeError as e:
+        logger.error(f"Ошибка парсинга JSON в файле локализации {path}: {e}")
+        return {}
+    except IOError as e:
+        logger.error(f"Ошибка чтения файла локализации {path}: {e}")
         return {}
 
 
@@ -58,8 +66,8 @@ def set_language(lang: str) -> None:
     for cb in list(_listeners):
         try:
             cb()
-        except Exception:
-            pass
+        except Exception as e:
+            logger.exception("Language change callback failed: %s", e)
 
 
 def get_language() -> str:

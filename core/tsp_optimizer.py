@@ -57,7 +57,7 @@ def two_opt(points, max_iterations=None, time_budget_ms=None):
                     continue
                 d_before = _dist(route[i - 1], route[i]) + _dist(route[j - 1], route[j])
                 d_after = _dist(route[i - 1], route[j - 1]) + _dist(route[i], route[j])
-                if d_after < d_before - 1e-10:
+                if d_after < d_before - 1e-9:
                     route[i:j] = route[i:j][::-1]
                     improved = True
     return route
@@ -101,7 +101,7 @@ def two_opt_slots(slots, max_iterations=None, time_budget_ms=None):
                             _dist(route[j - 1][1], route[j][0]))
                 d_after = (_dist(route[i - 1][1], route[j - 1][0]) +
                            _dist(route[i][1], route[j][0]))
-                if d_after < d_before - 1e-10:
+                if d_after < d_before - 1e-9:
                     route[i:j] = route[i:j][::-1]
                     improved = True
     return route

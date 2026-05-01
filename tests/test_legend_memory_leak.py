@@ -6,6 +6,7 @@ import tkinter as tk
 from unittest.mock import MagicMock, patch
 import sys
 import os
+import pytest
 
 # Добавляем корневую директорию в путь
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
@@ -14,6 +15,7 @@ import core.config as cfg
 from ui.legend import update_legend
 
 
+@pytest.mark.gui
 class TestLegendMemoryLeak(unittest.TestCase):
     """Тесты для проверки отсутствия утечки памяти при обновлении легенды."""
     

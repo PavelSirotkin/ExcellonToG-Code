@@ -1196,7 +1196,13 @@ HELP_SECTIONS = {
             {"type": "title", "text": "Version and license"},
 
             {"type": "h2", "text": "Current version"},
-            {"type": "bullet", "text": "ExcellonToG-Code 5.0 (May 2026)"},
+            {"type": "bullet", "text": "ExcellonToG-Code 5.1 (May 2026)"},
+            
+            {"type": "h2", "text": "Key changes in v5.1"},
+            {"type": "bullet", "text": "🏗️ Architecture refactoring — splitting ui/app.py into modules, improved code structure"},
+            {"type": "bullet", "text": "🔧 Quality improvements — full type hints, input validation, memory leak fixes"},
+            {"type": "bullet", "text": "🐛 Bug fixes — file system handling, race conditions, ZeroDivisionError"},
+            {"type": "bullet", "text": "🌐 Localization improvements — fixed all error messages, key deduplication"},
             
             {"type": "h2", "text": "Key changes in v5.0"},
             {"type": "bullet", "text": "🌙 Dark theme — support for light and dark color themes with instant switching"},

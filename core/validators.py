@@ -82,7 +82,7 @@ def validate_file_readable(filename: str) -> bool:
     if not validate_file_exists(filename):
         return False
     try:
-        with open(filename, 'r') as f:
+        with open(filename, 'r', encoding='utf-8', errors='ignore') as f:
             f.read(1)
         return True
     except (IOError, PermissionError):
@@ -93,7 +93,7 @@ def validate_excellon_header(filename: str) -> bool:
     """Проверка что файл начинается с заголовка Excellon.
     Ищет M48, %, METRIC, G90 в первых строках."""
     try:
-        with open(filename, 'r') as f:
+        with open(filename, 'r', encoding='utf-8', errors='ignore') as f:
             for _ in range(5):
                 line = f.readline().strip()
                 if not line:
@@ -111,7 +111,7 @@ def validate_slot_file_structure(filename: str) -> bool:
     """Проверка базовой структуры файла слотов.
     Должен содержать T<n>, G00, M15, G01, M16."""
     try:
-        with open(filename, 'r') as f:
+        with open(filename, 'r', encoding='utf-8', errors='ignore') as f:
             content = f.read()
         has_tool = bool(re.search(r'^T\d+$', content, re.MULTILINE))
         has_slot = 'M15' in content and 'M16' in content

@@ -1,9 +1,9 @@
 # ExcellonToG-Code
 
 [![Python](https://img.shields.io/badge/Python-3.8%2B-blue.svg)](https://www.python.org/)
-[![Tests](https://img.shields.io/badge/Tests-261%2B%20passing-brightgreen.svg)](tests/)
+[![Tests](https://img.shields.io/badge/Tests-349%20passing-brightgreen.svg)](tests/)
 ![Лицензия](https://img.shields.io/badge/license-free-green.svg)
-![Версия](https://img.shields.io/badge/version-5.0-orange.svg)
+![Версия](https://img.shields.io/badge/version-5.1-orange.svg)
 
 **Конвертация Excellon-файлов (сверление PCB) в G-code для любительских ЧПУ-станков с поддержкой слотов, импорта контура из Gerber и финишной обрезки платы.**
 
@@ -276,7 +276,7 @@ ExcellonToG-Code/
 │   └── validators.py            # Валидаторы параметров и геометрии
 │
 ├── ui/                          # GUI на Tkinter
-│   ├── app.py                   # Главное окно, компоновка, биндинги
+│   ├── app.py                   # Главное окно, компоновка, биндинги (~700 строк)
 │   ├── widgets.py               # Обработчики загрузки файлов и диалогов
 │   ├── renderer.py              # Отрисовка отверстий/слотов/контура на canvas
 │   ├── navigation.py            # Zoom, pan, drag, auto-fit
@@ -290,7 +290,15 @@ ExcellonToG-Code/
 │   ├── help_window.py           # Окно встроенной справки
 │   ├── mode_toggle.py           # Переключатель Простой/Про
 │   ├── tool_db_dialog.py        # Окно редактора базы инструментов
-│   └── tool_params_dialog.py    # Диалог параметров конкретного инструмента
+│   ├── tool_params_dialog.py    # Диалог параметров конкретного инструмента
+│   ├── panels/                  # Модульные панели UI
+│   │   ├── files_panel.py       # Панель работы с файлами
+│   │   ├── params_panel.py      # Панели параметров G-code и контура
+│   │   ├── gcode_panel.py       # Панель генерации G-code
+│   │   └── options_panel.py     # Панель опций (режим, тема, язык)
+│   └── handlers/                # Обработчики событий
+│       ├── file_handlers.py     # Обработчики файловых операций
+│       └── gcode_handlers.py    # Обработчики генерации G-code
 │
 ├── i18n/                        # Файлы локализации
 │   ├── strings_ru.json          # Русские переводы
@@ -301,21 +309,25 @@ ExcellonToG-Code/
 │   ├── help_content_ru.py       # Русская справка
 │   ├── help_content_en.py       # Английская справка
 │   ├── HELP_SYSTEM.md           # Описание системы справки
+│   ├── I18N_USAGE.md            # Руководство по использованию системы локализации
 │   └── STATISTICS_FEATURE.md    # Описание функции статистики
 │
-├── tests/                       # 261+ unit-тестов, pytest
-│   ├── test_parser.py           # Excellon parser (21)
-│   ├── test_gerber_parser.py    # Gerber parser (12)
-│   ├── test_transforms.py       # Координатные преобразования (12)
-│   ├── test_tsp_optimizer.py    # TSP алгоритмы (21)
-│   ├── test_gcode_generator.py  # Генерация G-code (36)
-│   ├── test_gcode_parser.py     # Парсер G-code для viz (10)
-│   ├── test_outline_gcode.py    # Генерация обрезки (5)
-│   ├── test_polygon_ops.py      # Геометрия полигонов (38)
-│   ├── test_validators.py       # Валидаторы (35)
-│   ├── test_tool_database.py    # База инструментов (39)
-│   ├── test_i18n.py             # Система локализации (19)
-│   ├── test_statistics_window.py # Статистика проекта (11)
+├── tests/                       # 349 unit-тестов, pytest
+│   ├── conftest.py              # Конфигурация pytest и фикстуры
+│   ├── test_parser.py           # Excellon parser
+│   ├── test_gerber_parser.py    # Gerber parser
+│   ├── test_transforms.py       # Координатные преобразования
+│   ├── test_tsp_optimizer.py    # TSP алгоритмы
+│   ├── test_gcode_generator.py  # Генерация G-code
+│   ├── test_gcode_parser.py     # Парсер G-code для viz
+│   ├── test_outline_gcode.py    # Генерация обрезки
+│   ├── test_polygon_ops.py      # Геометрия полигонов
+│   ├── test_validators.py       # Валидаторы
+│   ├── test_tool_database.py    # База инструментов
+│   ├── test_i18n.py             # Система локализации
+│   ├── test_statistics_window.py # Статистика проекта
+│   ├── test_legend_memory_leak.py # Тесты утечек памяти в легенде
+│   ├── test_path_validator.py   # Валидация путей файловой системы
 │   └── fixtures/                # Тестовые .drl / .gbr / .tap
 │
 ├── Samples/                     # Реальные примеры для ознакомления
@@ -328,9 +340,12 @@ ExcellonToG-Code/
 ### Принципы архитектуры
 
 - **Разделение core/ui** — `core/` не знает о Tkinter и может быть переиспользован в CLI/web-интерфейсе или как библиотека. `ui/` обращается к `core/` напрямую, но не наоборот.
+- **Модульная структура UI** — `ui/app.py` разбит на логические модули: `panels/` (компоненты интерфейса) и `handlers/` (обработчики событий). Основной файл сократился с 1363 до ~700 строк.
+- **Dependency Injection** — использование `AppContext` для управления зависимостями вместо глобальных переменных, что упрощает тестирование и поддержку.
 - **Глобальное состояние в `core/config.py`** — единый `cfg`-объект с загруженными отверстиями, слотами, контуром, активным режимом и реестром GUI-виджетов (по строковым ключам, чтобы модули UI не тянули друг друга).
 - **Система тематизации** — семантические палитры цветов с автоматическим обновлением всех зарегистрированных виджетов при смене темы.
 - **Система локализации** — централизованная система переводов с поддержкой динамического переключения языка и параметризованных строк.
+- **Полные type hints** — все модули используют полную типизацию для улучшения статического анализа и IDE-поддержки.
 - **Чистые функции в геометрии** — `polygon_ops.py` и `tsp_optimizer.py` не имеют побочных эффектов, легко тестируются.
 - **Ноль внешних зависимостей** для runtime-кода — политика проекта, подтверждённая в `requirements-dev.txt`.
 
@@ -354,21 +369,18 @@ python -m pytest tests/test_polygon_ops.py -v
 
 ### Текущее покрытие
 
-| Модуль | Тестов |
-|---|---|
-| `core/parser.py` | 21 |
-| `core/gerber_parser.py` | 12 |
-| `core/transforms.py` | 12 |
-| `core/tsp_optimizer.py` | 21 |
-| `core/gcode_generator.py` | 36 |
-| `core/gcode_parser.py` | 10 |
-| `core/outline_gcode.py` | 5 |
-| `core/polygon_ops.py` | 38 |
-| `core/validators.py` | 35 |
-| `core/tool_database.py` | 39 |
-| `core/i18n.py` | 19 |
-| `ui/statistics_window.py` | 11 |
-| **Итого** | **261+** |
+Проект содержит **349 unit-тестов**, покрывающих все критические модули:
+
+- Парсеры (Excellon, Gerber, G-code)
+- Координатные преобразования и геометрия полигонов
+- TSP-оптимизация маршрутов
+- Генерация G-code (сверление, фрезеровка, обрезка)
+- Валидация параметров и путей
+- База инструментов и система локализации
+- Тесты утечек памяти и race conditions
+- Статистика проекта
+
+Все тесты проходят успешно на Python 3.8-3.14.
 
 ---
 
@@ -408,7 +420,8 @@ python -m pytest tests/test_polygon_ops.py -v
 
 | Версия | Дата | Ключевые изменения |
 |---|---|---|
-| **5.0** | Май 2026 | 🌙 Тёмная тема интерфейса, 🌐 английская локализация, улучшенная система тематизации и переводов |
+| **5.1** | Май 2026 | 🏗️ Рефакторинг архитектуры: разбиение ui/app.py на модули (panels/, handlers/), Dependency Injection через AppContext. 🔧 Полные type hints во всех модулях. 🐛 Исправлены утечки памяти (theme-listeners, event bindings, tooltips), race conditions при генерации G-code, ZeroDivisionError в transforms. 🌐 Улучшена локализация (исправлены недостающие переводы, дедупликация ключей). 📝 Унификация кодировки UTF-8, улучшенная обработка ошибок файловой системы с логированием. ✅ 349 тестов (было 261). |
+| 5.0 | Май 2026 | 🌙 Тёмная тема интерфейса, 🌐 английская локализация, улучшенная система тематизации и переводов |
 | 4.7 | Апр 2026 | Полноценная статистика проекта, динамический выбор T-инструмента для контура, защита от зависания, валидация замкнутости контуров, улучшенная обработка ошибок |
 | 4.6 | Апр 2026 | Встроенная система справки с древовидной навигацией, контекстные tooltips, горячая клавиша F1 |
 | 4.5 | Апр 2026 | Gerber-парсер, обрезка платы по контуру, polygon_ops (offset, tabs), 2D-валидация отверстий внутри контура, правильное размещение tabs на серединах сторон |

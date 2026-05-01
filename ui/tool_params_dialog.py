@@ -9,6 +9,15 @@ from core.i18n import t
 import core.config as cfg
 
 
+def _unregister_widget_recursive(widget):
+    """Рекурсивно отменить регистрацию виджета и всех его дочерних виджетов."""
+    # Сначала обработать дочерние виджеты
+    for child in widget.winfo_children():
+        _unregister_widget_recursive(child)
+    # Затем отменить регистрацию самого виджета
+    cfg.unregister_themed_widget(widget)
+
+
 def show_tool_params_dialog(parent, tool_type: str, diameter: float,
                             defaults: dict = None) -> dict:
     """
@@ -113,17 +122,24 @@ def show_tool_params_dialog(parent, tool_type: str, diameter: float,
             result["add_to_db"] = add_to_db_var.get()
             result["diameter"] = diameter
             result["tool_type"] = tool_type
+            _unregister_widget_recursive(dlg)
             dlg.destroy()
         except ValueError as e:
             messagebox.showerror(t("app.dlg.error"), str(e), parent=dlg)
+    
+    def on_cancel():
+        _unregister_widget_recursive(dlg)
+        dlg.destroy()
 
     btn_ok = tk.Button(btn_frame, text=t("app.dlg.ok"), command=on_ok, width=10)
     cfg.register_themed_widget(btn_ok, bg="btn_bg", fg="btn_fg")
     btn_ok.pack(side="left", padx=5)
     
-    btn_cancel = tk.Button(btn_frame, text=t("app.dlg.cancel"), command=dlg.destroy, width=10)
+    btn_cancel = tk.Button(btn_frame, text=t("app.dlg.cancel"), command=on_cancel, width=10)
     cfg.register_themed_widget(btn_cancel, bg="btn_bg", fg="btn_fg")
     btn_cancel.pack(side="left", padx=5)
+    
+    dlg.protocol("WM_DELETE_WINDOW", on_cancel)
 
     dlg.wait_window()
     return result if result else None

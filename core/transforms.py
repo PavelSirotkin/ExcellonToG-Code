@@ -7,6 +7,8 @@ import core.config as cfg
 
 def clamp_offset(ox, oy, sf):
     """Ограничивает смещение, но только если область просмотра меньше мира."""
+    if sf == 0:
+        return ox, oy
     vw = cfg.WORKAREA_WIDTH / sf
     vh = cfg.WORKAREA_HEIGHT / sf
     world_w = cfg.X_MAX - cfg.X_MIN
@@ -32,11 +34,15 @@ def to_real_y(virtual_y):
 
 def to_virtual_x(real_x):
     """Экранная X (пиксели) → виртуальная X (мм)."""
+    if cfg.scale_factor == 0:
+        return cfg.offset_x
     center_x = cfg.WORKAREA_OFFSET_X + cfg.WORKAREA_WIDTH / 2
     return cfg.offset_x + (real_x - center_x) / cfg.scale_factor
 
 
 def to_virtual_y(real_y):
     """Экранная Y (пиксели) → виртуальная Y (мм). Инвертирована."""
+    if cfg.scale_factor == 0:
+        return cfg.offset_y
     center_y = cfg.WORKAREA_OFFSET_Y + cfg.WORKAREA_HEIGHT / 2
     return cfg.offset_y + (center_y - real_y) / cfg.scale_factor

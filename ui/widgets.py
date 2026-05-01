@@ -64,7 +64,7 @@ def choose_file():
 
     # Если слоты уже загружены — проверяем конфликт форматов
     if cfg.slot_filename:
-        fmt = _check_format_conflict(detected)
+        _check_format_conflict(detected)
     else:
         fmt = detected or cfg.coordinate_format
         cfg.coordinate_format = fmt
@@ -101,7 +101,7 @@ def choose_slot_file():
 
     # Если holes уже загружены — проверяем конфликт форматов
     if cfg.current_filename:
-        fmt = _check_format_conflict(detected)
+        _check_format_conflict(detected)
     else:
         fmt = detected or cfg.coordinate_format
         cfg.coordinate_format = fmt
@@ -192,6 +192,22 @@ def choose_outline_file():
 
     except Exception as e:
         messagebox.showerror(t("app.dlg.error"), t("app.err.parsing_gerber", error=str(e)))
+
+
+def clear_slots():
+    """Очистить загруженные слоты."""
+    cfg.slot_filename = None
+    cfg.slot_tools = {}
+    cfg.get_widget("slot_file_label").config(text=t("app.lbl.slots_not_loaded"))
+    cfg.get_widget("status_label").config(text=t("app.status.slots_cleared"))
+
+    # Перецентровка на оставшихся данных (или сброс если их нет)
+    from ui.navigation import auto_fit_scale
+    auto_fit_scale()
+    from ui.renderer import redraw_grid
+    redraw_grid()
+    from ui.legend import update_legend
+    update_legend()
 
 
 def clear_outline():

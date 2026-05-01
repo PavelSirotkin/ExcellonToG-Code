@@ -60,6 +60,13 @@ class TestToVirtualX:
         recovered = to_virtual_x(real)
         assert abs(virtual - recovered) < 1e-6
 
+    def test_zero_scale_factor(self):
+        """При scale_factor = 0 должен вернуться offset_x без деления на ноль."""
+        cfg.offset_x = 100
+        cfg.scale_factor = 0
+        result = to_virtual_x(500)
+        assert result == cfg.offset_x
+
 
 class TestToVirtualY:
     def test_inverse_of_to_real_y(self):
@@ -69,6 +76,13 @@ class TestToVirtualY:
         real = to_real_y(virtual)
         recovered = to_virtual_y(real)
         assert abs(virtual - recovered) < 1e-6
+
+    def test_zero_scale_factor(self):
+        """При scale_factor = 0 должен вернуться offset_y без деления на ноль."""
+        cfg.offset_y = 200
+        cfg.scale_factor = 0
+        result = to_virtual_y(300)
+        assert result == cfg.offset_y
 
 
 class TestClampOffset:
@@ -113,3 +127,9 @@ class TestClampOffset:
         min_ox = cfg.X_MIN + vw / 2   # -255
         ox, oy = clamp_offset(-500, 0, sf)
         assert abs(ox - min_ox) < 1e-9
+
+    def test_zero_scale_factor(self):
+        """При sf = 0 должны вернуться исходные смещения без деления на ноль."""
+        ox, oy = clamp_offset(100, 200, 0)
+        assert ox == 100
+        assert oy == 200

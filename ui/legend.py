@@ -1,21 +1,62 @@
 """
 Легенда инструментов: отображение, чекбоксы, контекстное меню, hover/solo.
+Реализует управление памятью для предотвращения утечек при частых обновлениях.
 """
+import logging
 import tkinter as tk
+import weakref
 from core.i18n import t
 import core.config as cfg
+
+logger = logging.getLogger(__name__)
 
 # Переменная чекбокса видимости контура — создаётся в update_legend, используется в toggle_tool_visibility
 _outline_var = None
 
+# Хранилище привязок событий для явной отписки
+_event_bindings = []
+
+
+def _unbind_events_recursive(widget):
+    """
+    Рекурсивно отвязать все события от виджета и его дочерних виджетов.
+    Предотвращает утечки памяти от lambda-функций и callback'ов.
+    """
+    try:
+        # Получить все привязанные события для виджета
+        for sequence in ('<Enter>', '<Leave>', '<Button-1>', '<Button-3>', 
+                        '<MouseWheel>', '<Button-4>', '<Button-5>'):
+            try:
+                widget.unbind(sequence)
+            except tk.TclError:
+                pass  # Событие не было привязано
+        
+        # Обработать дочерние виджеты
+        for child in widget.winfo_children():
+            _unbind_events_recursive(child)
+    except tk.TclError:
+        # Виджет уже уничтожен
+        pass
+
 
 def _unregister_widget_recursive(widget):
-    """Рекурсивно отменить регистрацию виджета и всех его дочерних виджетов."""
-    # Сначала обработать дочерние виджеты
-    for child in widget.winfo_children():
-        _unregister_widget_recursive(child)
-    # Затем отменить регистрацию самого виджета
-    cfg.unregister_themed_widget(widget)
+    """
+    Рекурсивно отменить регистрацию виджета и всех его дочерних виджетов.
+    Включает явную отписку от событий для предотвращения утечек памяти.
+    """
+    try:
+        # Сначала отвязать все события
+        _unbind_events_recursive(widget)
+        
+        # Затем обработать дочерние виджеты
+        for child in widget.winfo_children():
+            _unregister_widget_recursive(child)
+        
+        # Наконец, отменить регистрацию самого виджета
+        cfg.unregister_themed_widget(widget)
+    except tk.TclError:
+        # Виджет уже уничтожен
+        pass
 
 
 def toggle_tool_visibility(tool, tool_type):
@@ -36,27 +77,62 @@ def toggle_tool_visibility(tool, tool_type):
 
 
 def bind_mousewheel_to_children(widget):
-    """Рекурсивная привязка прокрутки к дочерним виджетам."""
+    """
+    Рекурсивная привязка прокрутки к дочерним виджетам.
+    Использует weak reference для предотвращения циклических ссылок.
+    """
     legend_canvas = cfg.get_widget("legend_canvas")
-    widget.bind("<MouseWheel>", lambda e: legend_canvas.yview_scroll(int(-1 * (e.delta / 120)), "units"))
-    widget.bind("<Button-4>", lambda e: legend_canvas.yview_scroll(-1, "units"))
-    widget.bind("<Button-5>", lambda e: legend_canvas.yview_scroll(1, "units"))
+    if not legend_canvas:
+        return
+    
+    # Используем weak reference для canvas
+    canvas_ref = weakref.ref(legend_canvas)
+    
+    def on_mousewheel(event):
+        canvas = canvas_ref()
+        if canvas:
+            canvas.yview_scroll(int(-1 * (event.delta / 120)), "units")
+    
+    def on_button4(event):
+        canvas = canvas_ref()
+        if canvas:
+            canvas.yview_scroll(-1, "units")
+    
+    def on_button5(event):
+        canvas = canvas_ref()
+        if canvas:
+            canvas.yview_scroll(1, "units")
+    
+    widget.bind("<MouseWheel>", on_mousewheel)
+    widget.bind("<Button-4>", on_button4)
+    widget.bind("<Button-5>", on_button5)
+    
     for child in widget.winfo_children():
         bind_mousewheel_to_children(child)
 
 
 def update_legend():
-    """Построение/перестройка легенды с чекбоксами."""
-    global _outline_var
+    """
+    Построение/перестройка легенды с чекбоксами.
+    Реализует полную очистку памяти перед пересозданием виджетов.
+    """
+    global _outline_var, _event_bindings
     cfg.hovered_tool = None
     cfg.solo_tool = None
     _outline_var = None
+    _event_bindings.clear()
 
     legend_frame = cfg.get_widget("legend_frame")
-    # Отменить регистрацию виджетов перед уничтожением для предотвращения утечки памяти
+    
+    # Явная отписка от событий и отмена регистрации перед уничтожением
+    # для предотвращения утечки памяти
     for widget in legend_frame.winfo_children():
         _unregister_widget_recursive(widget)
         widget.destroy()
+    
+    # Принудительная сборка мусора для освобождения памяти (опционально)
+    # import gc
+    # gc.collect()
     colors = cfg.HOLE_COLORS
     slot_colors = cfg.SLOT_COLORS
 
@@ -297,8 +373,8 @@ def update_legend():
             for w in frame.winfo_children():
                 try:
                     w.config(bg=bg)
-                except Exception:
-                    pass
+                except Exception as e:
+                    logger.exception("Failed to update legend widget background: %s", e)
 
     # Применить начальную подсветку
     _refresh_legend_highlight()

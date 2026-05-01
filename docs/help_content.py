@@ -24,6 +24,9 @@ class _HelpSectionsProxy:
     def __contains__(self, key):
         return key in _get_sections()
 
+    def __len__(self):
+        return len(_get_sections())
+
     def items(self):
         return _get_sections().items()
 
@@ -38,3 +41,8 @@ class _HelpSectionsProxy:
 
 
 HELP_SECTIONS = _HelpSectionsProxy()
+
+
+def get_help_content():
+    """Получить контент справки (для совместимости с тестами)."""
+    return HELP_SECTIONS

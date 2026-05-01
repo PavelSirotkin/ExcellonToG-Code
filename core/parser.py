@@ -1,9 +1,12 @@
 """
 Парсинг Excellon-файлов (отверстия и слоты).
 """
+import logging
 import re
 from core.tsp_optimizer import nearest_neighbor_tsp, nearest_neighbor_tsp_slots
 import core.config as cfg
+
+logger = logging.getLogger(__name__)
 
 
 def detect_coordinate_format(filename):
@@ -11,7 +14,8 @@ def detect_coordinate_format(filename):
     Ищет слово 'format' (без учёта регистра) и извлекает формат вида N.N или N:N.
     Возвращает строку формата (например '3.3') или None если не найден."""
     try:
-        with open(filename, 'r') as f:
+        # Сначала пробуем UTF-8
+        with open(filename, 'r', encoding='utf-8') as f:
             for _ in range(20):
                 line = f.readline()
                 if not line:
@@ -20,15 +24,31 @@ def detect_coordinate_format(filename):
                     m = re.search(r'(\d)[.:,](\d)', line)
                     if m:
                         return f"{m.group(1)}.{m.group(2)}"
-    except Exception:
-        pass
+    except UnicodeDecodeError:
+        # Если не получилось, пробуем latin-1
+        logger.warning("UTF-8 decode failed for %s, trying latin-1", filename)
+        try:
+            with open(filename, 'r', encoding='latin-1') as f:
+                for _ in range(20):
+                    line = f.readline()
+                    if not line:
+                        break
+                    if re.search(r'format', line, re.IGNORECASE):
+                        m = re.search(r'(\d)[.:,](\d)', line)
+                        if m:
+                            return f"{m.group(1)}.{m.group(2)}"
+        except (OSError, UnicodeDecodeError) as e:
+            logger.warning("detect_coordinate_format: cannot read %s: %s", filename, e)
+    except (OSError, PermissionError, FileNotFoundError) as e:
+        logger.warning("detect_coordinate_format: cannot read %s: %s", filename, e)
     return None
 
 
 def is_excellon_file(filename):
     """Проверка, является ли файл Excellon-формата."""
     try:
-        with open(filename, 'r') as f:
+        # Сначала пробуем UTF-8
+        with open(filename, 'r', encoding='utf-8') as f:
             for _ in range(cfg.EXCELLON_HEADER_LINES):
                 line = f.readline()
                 if not line:
@@ -37,7 +57,24 @@ def is_excellon_file(filename):
                 if line.startswith('M48') or line.startswith('%') or 'METRIC' in line or 'G90' in line:
                     return True
         return False
-    except Exception:
+    except UnicodeDecodeError:
+        # Если не получилось, пробуем latin-1
+        logger.warning("UTF-8 decode failed for %s, trying latin-1", filename)
+        try:
+            with open(filename, 'r', encoding='latin-1') as f:
+                for _ in range(cfg.EXCELLON_HEADER_LINES):
+                    line = f.readline()
+                    if not line:
+                        break
+                    line = line.strip()
+                    if line.startswith('M48') or line.startswith('%') or 'METRIC' in line or 'G90' in line:
+                        return True
+            return False
+        except (OSError, UnicodeDecodeError) as e:
+            logger.warning("is_excellon_file: cannot read %s: %s", filename, e)
+            return False
+    except (OSError, PermissionError, FileNotFoundError) as e:
+        logger.warning("is_excellon_file: cannot read %s: %s", filename, e)
         return False
 
 
@@ -58,45 +95,77 @@ def parse_excellon_file(filename, coord_format=None):
             f"Ожидается N.N (например, '3.3' или '4.2'). Подробности: {e}"
         )
     
+    # Защита от нулевой дробной части
+    if format_y == 0:
+        raise ValueError(
+            f"Неверный формат координат '{coord_format}'. "
+            f"Дробная часть должна быть > 0 (например, '3.3', '4.2', но не '3.0')."
+        )
+    
     last_x = None
     last_y = None
-    with open(filename, 'r') as f:
-        for line in f:
-            line = line.strip()
-            if not line:
-                continue
-            if line.startswith('T'):
-                tool_number = None
-                diameter = 0.0
-                tool_match = re.match(r'T(\d+)', line)
-                if tool_match:
-                    tool_number = tool_match.group(1)
-                c_match = re.search(r'C([0-9.]+)', line)
-                if c_match:
-                    diameter = float(c_match.group(1))
-                if tool_number:
-                    current_tool = tool_number
-                    if current_tool not in tools:
-                        tools[current_tool] = {
-                            'diameter': diameter,
-                            'holes': [],
-                            'visible': True,
-                            'var': None
-                        }
-                    last_x = None
-                    last_y = None
-            if current_tool and ('X' in line or 'Y' in line):
-                x_match = re.search(r'X([+-]?\d+)', line)
-                y_match = re.search(r'Y([+-]?\d+)', line)
-                if x_match:
-                    last_x = int(x_match.group(1))
-                if y_match:
-                    last_y = int(y_match.group(1))
-                # Требуем обе координаты — отверстие без X или Y невалидно
-                if last_x is not None and last_y is not None:
-                    x_mm = last_x / (10 ** format_y)
-                    y_mm = last_y / (10 ** format_y)
-                    tools[current_tool]['holes'].append((x_mm, y_mm))
+    
+    # Чтение файла с правильной обработкой кодировок
+    try:
+        # Сначала пробуем UTF-8
+        with open(filename, 'r', encoding='utf-8') as f:
+            content = f.read()
+    except UnicodeDecodeError:
+        # Если не получилось, пробуем latin-1
+        logger.warning("UTF-8 decode failed for %s, trying latin-1", filename)
+        try:
+            with open(filename, 'r', encoding='latin-1') as f:
+                content = f.read()
+        except UnicodeDecodeError as e:
+            logger.error("Failed to decode file %s with both UTF-8 and latin-1: %s", filename, e)
+            raise ValueError(f"Не удалось прочитать файл {filename}: проблема с кодировкой") from e
+    except PermissionError as e:
+        logger.error("Permission denied reading file %s: %s", filename, e)
+        raise PermissionError(f"Нет доступа к файлу {filename}") from e
+    except FileNotFoundError as e:
+        logger.error("File not found: %s", filename)
+        raise FileNotFoundError(f"Файл не найден: {filename}") from e
+    except OSError as e:
+        logger.error("OS error reading file %s: %s", filename, e)
+        raise OSError(f"Ошибка чтения файла {filename}: {e}") from e
+    
+    # Парсим содержимое построчно
+    for line in content.splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        if line.startswith('T'):
+            tool_number = None
+            diameter = 0.0
+            tool_match = re.match(r'T(\d+)', line)
+            if tool_match:
+                tool_number = tool_match.group(1)
+            c_match = re.search(r'C([0-9.]+)', line)
+            if c_match:
+                diameter = float(c_match.group(1))
+            if tool_number:
+                current_tool = tool_number
+                if current_tool not in tools:
+                    tools[current_tool] = {
+                        'diameter': diameter,
+                        'holes': [],
+                        'visible': True,
+                        'var': None
+                    }
+                last_x = None
+                last_y = None
+        if current_tool and ('X' in line or 'Y' in line):
+            x_match = re.search(r'X([+-]?\d+)', line)
+            y_match = re.search(r'Y([+-]?\d+)', line)
+            if x_match:
+                last_x = int(x_match.group(1))
+            if y_match:
+                last_y = int(y_match.group(1))
+            # Требуем обе координаты — отверстие без X или Y невалидно
+            if last_x is not None and last_y is not None:
+                x_mm = last_x / (10 ** format_y)
+                y_mm = last_y / (10 ** format_y)
+                tools[current_tool]['holes'].append((x_mm, y_mm))
     sorted_tools = dict(sorted(tools.items(), key=lambda item: item[1]['diameter']))
     for tool, data in sorted_tools.items():
         data['holes'] = nearest_neighbor_tsp(data['holes'])
@@ -121,9 +190,38 @@ def parse_slot_file(filename, coord_format=None):
             f"Ожидается N.N (например, '3.3' или '4.2'). Подробности: {e}"
         )
     
-    lines = []
-    with open(filename, 'r') as f:
-        lines = [l.strip() for l in f.readlines()]
+    # Защита от нулевой дробной части
+    if format_y == 0:
+        raise ValueError(
+            f"Неверный формат координат '{coord_format}'. "
+            f"Дробная часть должна быть > 0 (например, '3.3', '4.2', но не '3.0')."
+        )
+    
+    # Чтение файла с правильной обработкой кодировок
+    try:
+        # Сначала пробуем UTF-8
+        with open(filename, 'r', encoding='utf-8') as f:
+            content = f.read()
+    except UnicodeDecodeError:
+        # Если не получилось, пробуем latin-1
+        logger.warning("UTF-8 decode failed for %s, trying latin-1", filename)
+        try:
+            with open(filename, 'r', encoding='latin-1') as f:
+                content = f.read()
+        except UnicodeDecodeError as e:
+            logger.error("Failed to decode file %s with both UTF-8 and latin-1: %s", filename, e)
+            raise ValueError(f"Не удалось прочитать файл {filename}: проблема с кодировкой") from e
+    except PermissionError as e:
+        logger.error("Permission denied reading file %s: %s", filename, e)
+        raise PermissionError(f"Нет доступа к файлу {filename}") from e
+    except FileNotFoundError as e:
+        logger.error("File not found: %s", filename)
+        raise FileNotFoundError(f"Файл не найден: {filename}") from e
+    except OSError as e:
+        logger.error("OS error reading file %s: %s", filename, e)
+        raise OSError(f"Ошибка чтения файла {filename}: {e}") from e
+    
+    lines = [l.strip() for l in content.splitlines()]
     header_tools = {}
     in_header = True
     for line in lines:

@@ -26,6 +26,15 @@ class ModeEngine:
             raise ValueError(f"Недопустимый режим: {value}")
 
     @property
+    def current_mode(self) -> str:
+        """Алиас для mode (для совместимости с тестами)."""
+        return self._mode
+
+    def set_mode(self, value: str):
+        """Установить режим (для совместимости с тестами)."""
+        self.mode = value
+
+    @property
     def is_pro(self) -> bool:
         """True если режим 'pro'."""
         return self._mode == "pro"

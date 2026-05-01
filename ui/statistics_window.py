@@ -61,19 +61,16 @@ class StatisticsWindow:
         def _on_mousewheel(event):
             canvas.yview_scroll(int(-1 * (event.delta / 120)), "units")
         
-        canvas.bind_all("<MouseWheel>", _on_mousewheel)
-        self.window.protocol("WM_DELETE_WINDOW", lambda: self._on_close(canvas))
+        # Биндим прокрутку на окно статистики (не на весь application root)
+        # Это работает для всех виджетов внутри окна
+        self.window.bind("<MouseWheel>", _on_mousewheel)
+        self.window.protocol("WM_DELETE_WINDOW", self.window.destroy)
         
         # Центрирование окна
         self.center_window(parent)
         
         # Применить темную тему к заголовку окна после создания всех виджетов (Windows)
         self.window.after(10, lambda: cfg.apply_window_theme(self.window))
-    
-    def _on_close(self, canvas):
-        """Обработка закрытия окна."""
-        canvas.unbind_all("<MouseWheel>")
-        self.window.destroy()
     
     def collect_data(self):
         """Собрать все данные для статистики."""

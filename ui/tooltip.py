@@ -1,10 +1,13 @@
 """
 Всплывающие подсказки (tooltip) при клике на элементы.
 """
+import logging
 import math
 import tkinter as tk
 from core.transforms import to_virtual_x, to_virtual_y
 import core.config as cfg
+
+logger = logging.getLogger(__name__)
 
 
 def _tooltip_hide():
@@ -12,8 +15,8 @@ def _tooltip_hide():
     if cfg._tooltip_window:
         try:
             cfg._tooltip_window.destroy()
-        except Exception:
-            pass
+        except Exception as e:
+            logger.exception("Failed to destroy tooltip window: %s", e)
         cfg._tooltip_window = None
 
 

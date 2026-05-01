@@ -9,6 +9,15 @@ from core.i18n import t, register_listener, unregister_listener
 import core.config as cfg
 
 
+def _unregister_widget_recursive(widget):
+    """Рекурсивно отменить регистрацию виджета и всех его дочерних виджетов."""
+    # Сначала обработать дочерние виджеты
+    for child in widget.winfo_children():
+        _unregister_widget_recursive(child)
+    # Затем отменить регистрацию самого виджета
+    cfg.unregister_themed_widget(widget)
+
+
 class HelpWindow:
     """Окно справки с древовидной навигацией и форматированным содержимым."""
     
@@ -393,6 +402,7 @@ class HelpWindow:
     def _on_close(self):
         """Обработчик закрытия окна."""
         unregister_listener(self._on_lang_change)
+        _unregister_widget_recursive(self.window)
         self.window.destroy()
 
 
