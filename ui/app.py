@@ -665,12 +665,12 @@ def _check_missing_tools(tool_type: str, tools_dict: dict) -> list:
             continue
         if tool_type == "drill":
             if mode_engine.tool_db.find_drill(data['diameter']) is None:
-                missing.append(f"T{tool_num} D={data['diameter']:.2f}мм")
+                missing.append(f"T{tool_num} D={data['diameter']:.2f}{t('unit.mm')}")
         elif tool_type == "endmill":
             db = mode_engine.tool_db
             if (db.find_endmill(data['diameter']) is None and
                     db.find_endmill_smaller_than(data['diameter']) is None):
-                missing.append(f"T{tool_num} D={data['diameter']:.2f}мм")
+                missing.append(f"T{tool_num} D={data['diameter']:.2f}{t('unit.mm')}")
     return missing
 
 
@@ -705,8 +705,19 @@ def _check_endmill_multipass(tools_dict) -> list:
         stepover = smaller.get("stepover", 0)
         offsets = _calc_multipass_offsets(slot_d, tool_d, stepover)
         n = len(offsets)
+        
+        # Локализация: единицы измерения, тип инструмента и количество проходов
+        unit_mm = t('unit.mm')
+        tool_type = t('stats.tool.endmill')  # "Фреза" / "Mill"
+        
+        # Локализация множественного числа для "проход"
+        if get_language() == 'ru':
+            passes_word = 'проход' if n == 1 else ('прохода' if 2 <= n <= 4 else 'проходов')
+        else:
+            passes_word = 'pass' if n == 1 else 'passes'
+        
         result.append(
-            f"T{tool_num} ⌀{slot_d:.2f}мм → фреза ⌀{tool_d:.2f}мм, {n} проход{'а' if 2 <= n <= 4 else 'ов' if n >= 5 else ''}"
+            f"T{tool_num} ⌀{slot_d:.2f}{unit_mm} → {tool_type} ⌀{tool_d:.2f}{unit_mm}, {n} {passes_word}"
         )
     return result
 

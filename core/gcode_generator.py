@@ -243,9 +243,10 @@ def _build_drilling_gcode(current_tools, current_filename, params, tool_params_d
     Returns:
         (gcode_text, errors)
     """
+    from core.i18n import t
     errors = []
     if not current_tools:
-        errors.append("Нет загруженных данных об отверстиях.")
+        errors.append(t("app.err.no_holes_data"))
         return None, errors
 
     safe_z = params.get('safe_z', 5.0)
@@ -263,7 +264,7 @@ def _build_drilling_gcode(current_tools, current_filename, params, tool_params_d
     visible_tools = [(t, d) for t, d in current_tools.items()
                      if d['visible'] and d['holes']]
     if not visible_tools:
-        errors.append("Нет видимых отверстий для генерации.")
+        errors.append(t("app.err.no_visible_holes"))
         return None, errors
 
     buf = io.StringIO()
@@ -305,9 +306,10 @@ def _build_milling_gcode(slot_tools, slot_filename, params, tool_params_dict=Non
     Returns:
         (gcode_text, errors)
     """
+    from core.i18n import t
     errors = []
     if not slot_tools:
-        errors.append("Нет загруженных данных о слотах.")
+        errors.append(t("app.err.no_slots_data"))
         return None, errors
 
     safe_z = params.get('safe_z', 5.0)
@@ -326,7 +328,7 @@ def _build_milling_gcode(slot_tools, slot_filename, params, tool_params_dict=Non
     visible_tools = [(t, d) for t, d in slot_tools.items()
                      if d['visible'] and d['slots']]
     if not visible_tools:
-        errors.append("Нет видимых слотов для генерации.")
+        errors.append(t("app.err.no_visible_slots"))
         return None, errors
 
     buf = io.StringIO()
@@ -388,9 +390,10 @@ def _build_combined_gcode(current_tools, current_filename, slot_tools, slot_file
     Returns:
         (gcode_text, errors)
     """
+    from core.i18n import t
     errors = []
     if not current_tools and not slot_tools:
-        errors.append("Нет загруженных данных. Загрузите хотя бы один файл.")
+        errors.append(t("app.err.no_data_loaded"))
         return None, errors
 
     safe_z = params.get('safe_z', 5.0)
@@ -411,7 +414,7 @@ def _build_combined_gcode(current_tools, current_filename, slot_tools, slot_file
     has_visible_milling = any(d['visible'] and d['slots']
                                for d in (slot_tools or {}).values())
     if not has_visible_drilling and not has_visible_milling:
-        errors.append("Нет видимых инструментов с данными для генерации.")
+        errors.append(t("app.err.no_visible_tools"))
         return None, errors
 
     buf = io.StringIO()
@@ -506,12 +509,13 @@ def _build_outline_only_gcode(board_outline, board_outline_filename,
     Returns:
         (gcode_text, errors)
     """
+    from core.i18n import t
     errors = []
     if not board_outline:
-        errors.append("Контур платы не загружен.")
+        errors.append(t("app.err.outline_not_loaded"))
         return None, errors
     if not outline_params:
-        errors.append("Не заданы параметры обрезки по контуру.")
+        errors.append(t("app.err.outline_params_missing"))
         return None, errors
 
     safe_z = params.get('safe_z', 5.0)
