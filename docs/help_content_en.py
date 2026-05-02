@@ -1196,7 +1196,15 @@ HELP_SECTIONS = {
             {"type": "title", "text": "Version and license"},
 
             {"type": "h2", "text": "Current version"},
-            {"type": "bullet", "text": "ExcellonToG-Code 5.1 (May 2026)"},
+            {"type": "bullet", "text": "ExcellonToG-Code 5.2 (May 2026)"},
+            
+            {"type": "h2", "text": "Key changes in v5.2"},
+            {"type": "bullet", "text": "🔧 Root logger configuration — logging control via environment variables"},
+            {"type": "bullet", "text": "🐛 LZ/TZ (zero suppression) support in Excellon parser — correct handling of KiCad/Altium files"},
+            {"type": "bullet", "text": "🔧 Modal coordinates — proper handling of incomplete coordinates in Excellon"},
+            {"type": "bullet", "text": "✅ Pure path validation without side effects"},
+            {"type": "bullet", "text": "🔧 Parser fixes — elimination of phantom holes, stable tool sorting"},
+            {"type": "bullet", "text": "📦 PyInstaller spec audit — guaranteed correct exe build"},
             
             {"type": "h2", "text": "Key changes in v5.1"},
             {"type": "bullet", "text": "🏗️ Architecture refactoring — splitting ui/app.py into modules, improved code structure"},
@@ -1237,6 +1245,8 @@ HELP_SECTIONS = {
             {"type": "bullet", "text": "Tabs strictly at midpoints of sides (not at corners)"},
 
             {"type": "h2", "text": "History"},
+            {"type": "bullet", "text": "v5.2 — May 2026: Critical parser fixes, LZ/TZ support, logging"},
+            {"type": "bullet", "text": "v5.1 — May 2026: Architecture refactoring, memory leak fixes"},
             {"type": "bullet", "text": "v5.0 — May 2026: Dark theme, English localization"},
             {"type": "bullet", "text": "v4.7 — Apr 2026: Full statistics, technical improvements"},
             {"type": "bullet", "text": "v4.6 — Apr 2026: Help system"},

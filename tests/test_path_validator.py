@@ -63,9 +63,14 @@ class TestValidateSavePath:
         assert "%" in error_msg
     
     def test_path_with_allowed_base_dirs(self):
-        """Проверка пути с разрешёнными директориями."""
+        """Проверка пути с разрешёнными директориями (родитель существует)."""
         with tempfile.TemporaryDirectory() as tmpdir:
-            filepath = os.path.join(tmpdir, "subdir", "file.tap")
+            # Раньше тест полагался на побочный эффект os.makedirs внутри
+            # валидатора. Теперь валидатор — чистая функция, поэтому
+            # subdir создаём явно перед проверкой.
+            subdir = os.path.join(tmpdir, "subdir")
+            os.makedirs(subdir)
+            filepath = os.path.join(subdir, "file.tap")
             allowed_dirs = [tmpdir]
             is_valid, error_msg = validate_save_path(filepath, allowed_dirs)
             assert is_valid is True
@@ -81,29 +86,44 @@ class TestValidateSavePath:
                 assert is_valid is False
                 assert "outside allowed directories" in error_msg
     
-    def test_path_creates_parent_directory(self):
-        """Проверка создания родительской директории."""
+    def test_validator_does_not_create_parent_dir(self):
+        """H3: валидатор НЕ должен создавать директории как побочный эффект.
+
+        Раньше validate_save_path вызывал os.makedirs для несуществующего
+        родителя — это нарушало контракт «валидация = чистая функция»
+        и могло засорить FS до того, как пользователь подтвердит сохранение.
+        """
         with tempfile.TemporaryDirectory() as tmpdir:
-            filepath = os.path.join(tmpdir, "newdir", "file.tap")
+            nonexistent_parent = os.path.join(tmpdir, "newdir")
+            filepath = os.path.join(nonexistent_parent, "file.tap")
+            assert not os.path.exists(nonexistent_parent)  # sanity
+
+            is_valid, error_msg = validate_save_path(filepath)
+
+            # Новое поведение: путь невалиден, потому что родителя нет
+            assert is_valid is False
+            assert "does not exist" in error_msg
+            # Главное: директория НЕ должна быть создана как побочный эффект
+            assert not os.path.exists(nonexistent_parent)
+
+    def test_nonexistent_parent_directory_rejected(self):
+        """Несуществующая родительская директория → валидация не проходит."""
+        if os.name == 'nt':
+            filepath = "Z:\\nonexistent\\path\\file.tap"
+        else:
+            filepath = "/nonexistent_root/path/file.tap"
+
+        is_valid, error_msg = validate_save_path(filepath)
+        assert is_valid is False
+        assert "does not exist" in error_msg or "not writable" in error_msg
+
+    def test_existing_writable_parent_passes(self):
+        """Существующий и доступный для записи родитель → валидация проходит."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            filepath = os.path.join(tmpdir, "subfile.tap")
             is_valid, error_msg = validate_save_path(filepath)
             assert is_valid is True
             assert error_msg == ""
-            # Проверить что директория создана
-            assert os.path.exists(os.path.dirname(filepath))
-    
-    def test_path_with_invalid_parent_directory(self):
-        """Проверка пути с недоступной родительской директорией."""
-        # Попытка создать файл в несуществующем корневом пути
-        if os.name == 'nt':  # Windows
-            filepath = "Z:\\nonexistent\\path\\file.tap"
-        else:  # Unix-like
-            filepath = "/root/restricted/file.tap"
-        
-        is_valid, error_msg = validate_save_path(filepath)
-        # Может быть валидным или невалидным в зависимости от прав доступа
-        # Главное - не должно быть исключения
-        assert isinstance(is_valid, bool)
-        assert isinstance(error_msg, str)
 
 
 class TestGetSafeFilename:

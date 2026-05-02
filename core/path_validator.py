@@ -60,17 +60,23 @@ def validate_save_path(filename: str, allowed_base_dirs: list = None) -> tuple[b
                 logger.warning(f"Path validation failed: {msg} - {abs_path}")
                 return False, msg
         
-        # Проверка что родительская директория существует или может быть создана
+        # H3: валидация — чистая функция без побочных эффектов.
+        # Родительская директория должна СУЩЕСТВОВАТЬ и быть доступной для записи.
+        # Создание директорий вынесено в код сохранения — пусть это делает
+        # вызывающий уже после явного подтверждения пользователем (а в текущем
+        # UI это не требуется: filedialog.asksaveasfilename гарантирует, что
+        # родитель существует).
         parent_dir = os.path.dirname(abs_path)
-        if parent_dir and not os.path.exists(parent_dir):
-            try:
-                # Попытка создать директорию для проверки прав
-                os.makedirs(parent_dir, exist_ok=True)
-            except (OSError, PermissionError) as e:
-                msg = f"Cannot create directory: {str(e)}"
-                logger.warning(f"Path validation failed: {msg} - {parent_dir}")
+        if parent_dir:
+            if not os.path.exists(parent_dir):
+                msg = f"Parent directory does not exist: {parent_dir}"
+                logger.warning(f"Path validation failed: {msg}")
                 return False, msg
-        
+            if not os.access(parent_dir, os.W_OK):
+                msg = f"Parent directory is not writable: {parent_dir}"
+                logger.warning(f"Path validation failed: {msg}")
+                return False, msg
+
         logger.debug(f"Path validation passed: {abs_path}")
         return True, ""
         

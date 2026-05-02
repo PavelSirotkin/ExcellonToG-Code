@@ -35,3 +35,6 @@ AUDIT_REPORT.md
 # Generated files (keep templates, ignore runtime data)
 !tool_base.json
 !gcode_params.json
+
+# Runtime logs
+*.log
