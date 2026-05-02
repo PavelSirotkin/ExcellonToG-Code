@@ -432,8 +432,6 @@ python -m pytest tests/test_polygon_ops.py -v
 | 4.0 | Апр 2026 | Модульная архитектура (core/ui), база инструментов, режимы Простой/Про, покрытие тестами |
 | 3.2 | — | Монолитный `SRC/ExcellonToG-Code_V_3.2.py` (2163 строки) |
 
-Подробности — в [RELEASE_NOTES.md](RELEASE_NOTES.md).
-
 ---
 
 ## 🐛 Известные ограничения
