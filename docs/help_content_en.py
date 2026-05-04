@@ -1196,7 +1196,11 @@ HELP_SECTIONS = {
             {"type": "title", "text": "Version and license"},
 
             {"type": "h2", "text": "Current version"},
-            {"type": "bullet", "text": "ExcellonToG-Code 5.2 (May 2026)"},
+            {"type": "bullet", "text": "ExcellonToG-Code 5.3 (May 2026)"},
+            
+            {"type": "h2", "text": "Key changes in v5.3"},
+            {"type": "bullet", "text": "📐 Exp format support (explicit decimal point) — correct handling of KiCAD files with coordinates like X1.0Y59.0"},
+            {"type": "bullet", "text": "🌐 Legend localization — replaced «tabs» with «пер.» in Russian version"},
             
             {"type": "h2", "text": "Key changes in v5.2"},
             {"type": "bullet", "text": "🔧 Root logger configuration — logging control via environment variables"},
@@ -1245,6 +1249,7 @@ HELP_SECTIONS = {
             {"type": "bullet", "text": "Tabs strictly at midpoints of sides (not at corners)"},
 
             {"type": "h2", "text": "History"},
+            {"type": "bullet", "text": "v5.3 — May 2026: Exp format support, legend localization"},
             {"type": "bullet", "text": "v5.2 — May 2026: Critical parser fixes, LZ/TZ support, logging"},
             {"type": "bullet", "text": "v5.1 — May 2026: Architecture refactoring, memory leak fixes"},
             {"type": "bullet", "text": "v5.0 — May 2026: Dark theme, English localization"},
