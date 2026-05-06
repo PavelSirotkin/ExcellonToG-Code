@@ -64,23 +64,42 @@ class GerberParser:
         self.region_points = []  # точки текущего региона
         self.segments = []  # итоговые сегменты
         self.in_region = False
+        # Флаг: следующий построенный сегмент — начало нового подконтура.
+        # Контур платы из Gerber может состоять из нескольких независимых
+        # замкнутых путей (например, внешний контур + регион-вырез G36/G37).
+        # Без разбиения они попадают в один плоский список и рендер/проверка
+        # замкнутости трактуют их как единый разорванный путь.
+        self._pending_subpath_start = True
 
     def _parse_coordinate(self, val_str: str) -> float:
-        """Парсинг координаты с учётом формата."""
+        """Парсинг координаты с учётом формата.
+
+        Знак вынесен ДО zfill: иначе `"-40".zfill(6)` даёт `"-00040"`,
+        и срез по integer_digits отделяет `"-000"` (это всё ещё 0), а
+        дробь `"40"` оказывается без знака. Раньше из-за этого все
+        отрицательные координаты (включая I/J центров дуг и Y<0
+        внешнего контура) парсились как положительные — отсюда bbox
+        без отрицательной части и неверные радиусы скруглений.
+        """
         if not val_str:
             return None
-        # Убираем ведущие нули если есть (leading zeros)
-        val_str = val_str.lstrip('0')
+
+        sign = 1
+        if val_str[0] == '-':
+            sign = -1
+            val_str = val_str[1:]
+        elif val_str[0] == '+':
+            val_str = val_str[1:]
+
         if not val_str:
-            val_str = '0'
-        # Дополняем до нужной длины
+            return 0.0
+
         total_digits = self.integer_digits + self.decimal_digits
         val_str = val_str.zfill(total_digits)
-        # Разделяем целую и дробную части
         int_part = val_str[:self.integer_digits]
         frac_part = val_str[self.integer_digits:]
         value = int(int_part) + int(frac_part) / (10 ** self.decimal_digits)
-        return value
+        return sign * value
 
     def _extract_xy(self, line: str) -> Tuple[Optional[float], Optional[float]]:
         """Извлечь X и Y из строки."""
@@ -106,24 +125,32 @@ class GerberParser:
 
     def _add_segment(self, x1: float, y1: float, x2: float, y2: float,
                      i: float = 0.0, j: float = 0.0):
-        """Добавить сегмент (линию или дугу)."""
+        """Добавить сегмент (линию или дугу).
+
+        Нуль-длинные сегменты (D01 без изменения позиции, в том числе
+        одиночный `D01*` после закрытия региона) пропускаются — они
+        не несут геометрии и портят последующие операции (offset, length).
+        Первый реальный сегмент после move/G36/G37 помечается
+        `subpath_start=True`.
+        """
         x1_mm = self._convert_to_mm(x1)
         y1_mm = self._convert_to_mm(y1)
         x2_mm = self._convert_to_mm(x2)
         y2_mm = self._convert_to_mm(y2)
 
         if self.interpolation == "linear":
+            if abs(x1_mm - x2_mm) < 1e-9 and abs(y1_mm - y2_mm) < 1e-9:
+                return  # вырожденная линия — игнорируем, флаг subpath сохраняется
             seg = make_line((x1_mm, y1_mm), (x2_mm, y2_mm))
-            self.segments.append(seg)
-            if self.in_region:
-                self.region_points.append((x2_mm, y2_mm))
         else:
             # Дуга
             i_mm = self._convert_to_mm(i)
             j_mm = self._convert_to_mm(j)
+            r = math.sqrt(i_mm ** 2 + j_mm ** 2)
+            if r < 1e-9:
+                return  # вырожденная дуга
             center_x = x1 + i
             center_y = y1 + j
-            r = math.sqrt(i_mm ** 2 + j_mm ** 2)
             ccw = (self.interpolation == "ccw")
             seg = make_arc(
                 (self._convert_to_mm(center_x), self._convert_to_mm(center_y)),
@@ -132,9 +159,14 @@ class GerberParser:
                 (x2_mm, y2_mm),
                 ccw
             )
-            self.segments.append(seg)
-            if self.in_region:
-                self.region_points.append((x2_mm, y2_mm))
+
+        if self._pending_subpath_start:
+            seg['subpath_start'] = True
+            self._pending_subpath_start = False
+
+        self.segments.append(seg)
+        if self.in_region:
+            self.region_points.append((x2_mm, y2_mm))
 
     def parse_line(self, line: str):
         """Обработать одну строку Gerber."""
@@ -169,15 +201,17 @@ class GerberParser:
             self.interpolation = "ccw"
             return
 
-        # Начало региона
+        # Начало региона — отдельный замкнутый подконтур
         if line == 'G36*':
             self.in_region = True
             self.region_points = []
+            self._pending_subpath_start = True
             return
 
-        # Конец региона
+        # Конец региона — следующий путь начнёт новый подконтур
         if line == 'G37*':
             self.in_region = False
+            self._pending_subpath_start = True
             return
 
         # Конец файла
@@ -214,7 +248,12 @@ class GerberParser:
                     self.region_points.append((self._convert_to_mm(prev_x), self._convert_to_mm(prev_y)))
 
             elif d_code == 2:  # D02 = move без резки
-                pass  # Просто обновляем позицию
+                # Реальное перемещение пера разрывает путь — следующий
+                # D01-сегмент стартует новый подконтур. Чистый `D02*`
+                # без новых координат не считается перемещением.
+                if (x is not None and abs(self.current_x - prev_x) > 1e-9) or \
+                   (y is not None and abs(self.current_y - prev_y) > 1e-9):
+                    self._pending_subpath_start = True
 
             self._prev_x = self.current_x
             self._prev_y = self.current_y
@@ -303,26 +342,43 @@ def is_gerber_file(filename: str) -> bool:
 
 
 def check_contour_closed(segments: List[Dict], eps: float = 1e-3) -> bool:
-    """Проверка замкнутости контура."""
+    """Проверка замкнутости контура.
+
+    Контур из Gerber может состоять из нескольких подконтуров (внешний
+    контур + регионы-вырезы). Считаем контур замкнутым, если ВСЕ его
+    подконтуры замкнуты (start первого сегмента подконтура совпадает
+    с end последнего).
+    """
     if not segments:
         return False
 
-    # Собираем все точки в порядке следования
-    points = []
+    # Делим на подконтуры по флагу 'subpath_start'.
+    # Совместимость со старыми данными: если флагов нет вообще,
+    # трактуем как один подконтур.
+    subpaths: List[List[Dict]] = []
+    current: List[Dict] = []
     for seg in segments:
-        if seg['type'] == 'line':
-            if not points:
-                points.append(seg['p1'])
-            points.append(seg['p2'])
-        elif seg['type'] == 'arc':
-            if not points:
-                points.append(seg['start'])
-            points.append(seg['end'])
+        if seg.get('subpath_start') and current:
+            subpaths.append(current)
+            current = []
+        current.append(seg)
+    if current:
+        subpaths.append(current)
 
-    if len(points) < 3:
+    if not subpaths:
         return False
 
-    # Проверяем, что первая и последняя точки совпадают
-    first = points[0]
-    last = points[-1]
-    return math.sqrt((first[0] - last[0])**2 + (first[1] - last[1])**2) < eps
+    def _start(seg):
+        return seg['p1'] if seg['type'] == 'line' else seg['start']
+
+    def _end(seg):
+        return seg['p2'] if seg['type'] == 'line' else seg['end']
+
+    for sp in subpaths:
+        if len(sp) < 2:
+            return False
+        first = _start(sp[0])
+        last = _end(sp[-1])
+        if math.hypot(first[0] - last[0], first[1] - last[1]) >= eps:
+            return False
+    return True

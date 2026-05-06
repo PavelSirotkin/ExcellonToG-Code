@@ -55,32 +55,66 @@ def normalize_to_ccw(points: List[Tuple[float, float]]) -> List[Tuple[float, flo
     return list(reversed(points))
 
 
-def is_closed_contour(segments: List[Dict[str, Any]], tol_mm: float = 1e-3) -> bool:
-    """Проверить, что контур замкнут (последняя точка совпадает с первой
-    в пределах tol_mm).
+def _seg_start(seg: Dict[str, Any]) -> Tuple[float, float]:
+    return seg['p1'] if seg['type'] == 'line' else seg['start']
 
-    Контур из < 2 сегментов или с конечной точкой далеко от стартовой
-    считается незамкнутым. Используется перед операциями offset_segments
-    и insert_tabs — на незамкнутом контуре они дают мусор молча.
+
+def _seg_end(seg: Dict[str, Any]) -> Tuple[float, float]:
+    return seg['p2'] if seg['type'] == 'line' else seg['end']
+
+
+def split_subpaths(segments: List[Dict[str, Any]]) -> List[List[Dict[str, Any]]]:
+    """Разбить плоский список сегментов на подконтуры.
+
+    Подконтур начинается с сегмента, помеченного `subpath_start=True`
+    парсером (внешний контур, каждый G36/G37 регион, путь после явного
+    D02-перемещения). Если флагов нет ни на одном сегменте — возвращаем
+    единый подконтур (поведение для исторических данных).
+    """
+    if not segments:
+        return []
+    subpaths: List[List[Dict[str, Any]]] = []
+    current: List[Dict[str, Any]] = []
+    for seg in segments:
+        if seg.get('subpath_start') and current:
+            subpaths.append(current)
+            current = []
+        current.append(seg)
+    if current:
+        subpaths.append(current)
+    return subpaths
+
+
+def is_closed_contour(segments: List[Dict[str, Any]], tol_mm: float = 1e-3) -> bool:
+    """Проверить, что контур замкнут.
+
+    Если контур состоит из нескольких подконтуров (внешний контур +
+    G36/G37-вырезы), требуем замкнутости КАЖДОГО — иначе offset/tabs
+    дадут мусор. Старая реализация сравнивала только общий start/end,
+    из-за чего платы с вырезами считались незамкнутыми и блокировали
+    генерацию обрезного G-code.
 
     Args:
         segments: список сегментов 'line'/'arc'
         tol_mm: допуск на стыковку start ↔ end (по умолчанию 1 микрон)
     Returns:
-        True если контур замкнут, иначе False
+        True если все подконтуры замкнуты, иначе False
     """
     if not segments or len(segments) < 2:
         return False
 
-    def _seg_start(seg: Dict[str, Any]) -> Tuple[float, float]:
-        return seg['p1'] if seg['type'] == 'line' else seg['start']
+    subpaths = split_subpaths(segments)
+    if not subpaths:
+        return False
 
-    def _seg_end(seg: Dict[str, Any]) -> Tuple[float, float]:
-        return seg['p2'] if seg['type'] == 'line' else seg['end']
-
-    first = _seg_start(segments[0])
-    last = _seg_end(segments[-1])
-    return math.hypot(first[0] - last[0], first[1] - last[1]) <= tol_mm
+    for sp in subpaths:
+        if len(sp) < 2:
+            return False
+        first = _seg_start(sp[0])
+        last = _seg_end(sp[-1])
+        if math.hypot(first[0] - last[0], first[1] - last[1]) > tol_mm:
+            return False
+    return True
 
 
 # ==========================================================
@@ -131,6 +165,11 @@ def flatten(segments: List[Dict[str, Any]], tol_mm: float = 0.02) -> List[Tuple[
     """
     Преобразовать сегменты в список точек (дуги → хорды).
     Возвращает список точек контура.
+
+    Внимание: для контуров с несколькими подконтурами возвращает все
+    точки подряд без разделителя — точки соседних подконтуров окажутся
+    «соединёнными» в линию. Для рендера/обхода с разрывами используйте
+    `flatten_subpaths`.
     """
     if not segments:
         return []
@@ -149,6 +188,74 @@ def flatten(segments: List[Dict[str, Any]], tol_mm: float = 0.02) -> List[Tuple[
                 points.extend(arc_points[1:])  # Пропускаем первую точку (дублируется)
 
     return points
+
+
+def flatten_subpaths(segments: List[Dict[str, Any]],
+                     tol_mm: float = 0.02) -> List[List[Tuple[float, float]]]:
+    """Развернуть сегменты в список подконтуров (каждый — список точек).
+
+    Используется рендером, чтобы внешний контур и G36/G37-вырезы
+    рисовались независимо и между ними не появлялись паразитные линии.
+    """
+    return [flatten(sp, tol_mm=tol_mm) for sp in split_subpaths(segments)]
+
+
+def classify_subpaths(segments: List[Dict[str, Any]],
+                      tol_mm: float = 0.5) -> List[Dict[str, Any]]:
+    """Классифицировать подконтуры на внешние и внутренние.
+
+    Для каждого подконтура вычисляем уровень вложенности — сколько
+    ДРУГИХ подконтуров содержат его внутри себя (через
+    point_in_polygon по тестовой точке). Чётный уровень (включая 0) —
+    внешний контур (нужен offset НАРУЖУ), нечётный — внутренний вырез
+    (нужен offset ВНУТРЬ). Это корректно для произвольной глубины
+    «остров в дыре в острове в плате».
+
+    Args:
+        segments: плоский список сегментов с метками subpath_start
+        tol_mm: точность аппроксимации дуг при проверке (грубее — быстрее)
+
+    Returns:
+        Список словарей в том же порядке, что и подконтуры:
+        [{'segments': [...], 'is_outer': bool, 'depth': int, 'polygon': [...]}, ...]
+    """
+    sps = split_subpaths(segments)
+    polys = [flatten(sp, tol_mm=tol_mm) for sp in sps]
+
+    # Для каждого подконтура берём «надёжную» тестовую точку.
+    # Первая точка лежит на границе соседнего подконтура только если
+    # они касаются — что для PCB не норма. Но для пущей надёжности
+    # пробуем несколько точек и берём большинство.
+    def _depth_of(idx: int) -> int:
+        poly = polys[idx]
+        if not poly:
+            return 0
+        # Несколько проб по подконтуру
+        n = len(poly)
+        sample_idxs = [0, n // 3, (2 * n) // 3] if n >= 3 else [0]
+        depths: List[int] = []
+        for s_idx in sample_idxs:
+            test_pt = poly[s_idx]
+            d = 0
+            for j, pj in enumerate(polys):
+                if j == idx or len(pj) < 3:
+                    continue
+                if point_in_polygon(test_pt, pj):
+                    d += 1
+            depths.append(d)
+        # «Голосование» — самое частое значение
+        return max(set(depths), key=depths.count)
+
+    result: List[Dict[str, Any]] = []
+    for i, sp in enumerate(sps):
+        depth = _depth_of(i)
+        result.append({
+            'segments': sp,
+            'is_outer': (depth % 2 == 0),
+            'depth': depth,
+            'polygon': polys[i],
+        })
+    return result
 
 
 def _flatten_arc(arc: Dict[str, Any], tol_mm: float) -> List[Tuple[float, float]]:

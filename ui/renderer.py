@@ -284,31 +284,46 @@ def redraw_grid(event=None):
 
 
 def _draw_board_outline(canvas, wa_x1, wa_y1, wa_x2, wa_y2):
-    """Отрисовка контура платы из Gerber."""
-    from core.polygon_ops import flatten
+    """Отрисовка контура платы из Gerber.
 
-    # Преобразуем сегменты в точки
-    points = flatten(cfg.board_outline, tol_mm=0.02)
-    if len(points) < 3:
-        return
+    Контур может состоять из нескольких подконтуров (внешний контур +
+    G36/G37-вырезы). Каждый подконтур рисуется самостоятельно — поэтому
+    между внешним контуром и вырезом не появляются паразитные линии.
+    Замыкание добавляется только если данные сами не закрыли подконтур
+    (раньше слепое `(i+1) % len(points)` всегда соединяло хвост с
+    первой точкой ВСЕГО списка, склеивая разные подконтуры).
+    """
+    from core.polygon_ops import flatten_subpaths
 
-    # Рисуем линии контура
-    for i in range(len(points)):
-        x1_mm, y1_mm = points[i]
-        x2_mm, y2_mm = points[(i + 1) % len(points)]
+    color = cfg.get_color("outline_path")
+    for subpath in flatten_subpaths(cfg.board_outline, tol_mm=0.02):
+        if len(subpath) < 2:
+            continue
 
-        real_x1 = to_real_x(x1_mm)
-        real_y1 = to_real_y(y1_mm)
-        real_x2 = to_real_x(x2_mm)
-        real_y2 = to_real_y(y2_mm)
+        # Рисуем последовательные сегменты подконтура
+        for i in range(len(subpath) - 1):
+            x1_mm, y1_mm = subpath[i]
+            x2_mm, y2_mm = subpath[i + 1]
+            clipped = clip_line(to_real_x(x1_mm), to_real_y(y1_mm),
+                                to_real_x(x2_mm), to_real_y(y2_mm),
+                                wa_x1, wa_y1, wa_x2, wa_y2)
+            if clipped[0] is not None:
+                canvas.create_line(clipped[0], clipped[1],
+                                   clipped[2], clipped[3],
+                                   fill=color, width=2)
 
-        # Клиппируем линию
-        clipped = clip_line(real_x1, real_y1, real_x2, real_y2,
-                            wa_x1, wa_y1, wa_x2, wa_y2)
-        if clipped[0] is not None:
-            canvas.create_line(clipped[0], clipped[1],
-                               clipped[2], clipped[3],
-                               fill=cfg.get_color("outline_path"), width=2)
+        # Если подконтур фактически не замкнут данными — соединяем явно,
+        # чтобы был виден разрыв в самом ребре, а не пустота между концами.
+        first = subpath[0]
+        last = subpath[-1]
+        if math.hypot(last[0] - first[0], last[1] - first[1]) > 1e-3:
+            clipped = clip_line(to_real_x(last[0]), to_real_y(last[1]),
+                                to_real_x(first[0]), to_real_y(first[1]),
+                                wa_x1, wa_y1, wa_x2, wa_y2)
+            if clipped[0] is not None:
+                canvas.create_line(clipped[0], clipped[1],
+                                   clipped[2], clipped[3],
+                                   fill=color, width=2, dash=(4, 4))
 
 
 # Регистрация listener для перерисовки при смене темы

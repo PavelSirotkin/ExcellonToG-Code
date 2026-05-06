@@ -6,7 +6,8 @@ import math
 from core.polygon_ops import (
     bounding_box, polygon_signed_area, is_ccw, normalize_to_ccw,
     point_in_polygon, flatten, offset_segments, insert_tabs,
-    compute_total_length, point_at_length, is_closed_contour
+    compute_total_length, point_at_length, is_closed_contour,
+    split_subpaths, flatten_subpaths, classify_subpaths,
 )
 from core.gerber_parser import make_line, make_arc
 
@@ -276,6 +277,136 @@ class TestIsClosedContour:
     def test_empty_segments(self):
         """Пустой список не является замкнутым контуром."""
         assert is_closed_contour([]) is False
+
+    def test_closed_outline_with_cutout(self):
+        """Контур с замкнутым внешним контуром И замкнутым вырезом —
+        должен распознаваться как замкнутый, хотя first.start ≠ last.end.
+        Раньше старая реализация на этом возвращала False."""
+        outline = [
+            {**make_line((0, 0), (10, 0)), 'subpath_start': True},
+            make_line((10, 0), (10, 10)),
+            make_line((10, 10), (0, 10)),
+            make_line((0, 10), (0, 0)),
+        ]
+        cutout = [
+            {**make_line((3, 3), (7, 3)), 'subpath_start': True},
+            make_line((7, 3), (7, 7)),
+            make_line((7, 7), (3, 7)),
+            make_line((3, 7), (3, 3)),
+        ]
+        assert is_closed_contour(outline + cutout) is True
+
+    def test_open_outline_with_closed_cutout(self):
+        """Если хотя бы один подконтур разорван — общий результат False."""
+        outline = [
+            {**make_line((0, 0), (10, 0)), 'subpath_start': True},
+            make_line((10, 0), (10, 10)),
+            make_line((10, 10), (0, 10)),
+            # без замыкающей линии
+        ]
+        cutout = [
+            {**make_line((3, 3), (7, 3)), 'subpath_start': True},
+            make_line((7, 3), (7, 7)),
+            make_line((7, 7), (3, 7)),
+            make_line((3, 7), (3, 3)),
+        ]
+        assert is_closed_contour(outline + cutout) is False
+
+
+class TestSubpaths:
+    def test_split_no_markers_single_subpath(self):
+        """Совместимость: если меток нет — один подконтур."""
+        segments = [
+            make_line((0, 0), (10, 0)),
+            make_line((10, 0), (10, 10)),
+        ]
+        subpaths = split_subpaths(segments)
+        assert len(subpaths) == 1
+        assert len(subpaths[0]) == 2
+
+    def test_split_two_subpaths(self):
+        outline = [
+            {**make_line((0, 0), (10, 0)), 'subpath_start': True},
+            make_line((10, 0), (0, 0)),
+        ]
+        cutout = [
+            {**make_line((3, 3), (7, 3)), 'subpath_start': True},
+            make_line((7, 3), (3, 3)),
+        ]
+        subpaths = split_subpaths(outline + cutout)
+        assert len(subpaths) == 2
+        assert len(subpaths[0]) == 2
+        assert len(subpaths[1]) == 2
+
+    def test_flatten_subpaths_keeps_separation(self):
+        """flatten_subpaths не должен соединять разные подконтуры."""
+        outline = [
+            {**make_line((0, 0), (10, 0)), 'subpath_start': True},
+            make_line((10, 0), (10, 10)),
+            make_line((10, 10), (0, 0)),
+        ]
+        cutout = [
+            {**make_line((3, 3), (7, 3)), 'subpath_start': True},
+            make_line((7, 3), (3, 3)),
+        ]
+        result = flatten_subpaths(outline + cutout)
+        assert len(result) == 2
+        assert (0, 0) in result[0]
+        assert (3, 3) in result[1]
+        # Точки одного подконтура не должны попадать в другой
+        assert (10, 0) not in result[1]
+        assert (7, 3) not in result[0]
+
+
+class TestClassifySubpaths:
+    def _square(self, x0, y0, x1, y1, mark_start=True):
+        """Утилита: квадрат как замкнутый список линий."""
+        first = make_line((x0, y0), (x1, y0))
+        if mark_start:
+            first['subpath_start'] = True
+        return [
+            first,
+            make_line((x1, y0), (x1, y1)),
+            make_line((x1, y1), (x0, y1)),
+            make_line((x0, y1), (x0, y0)),
+        ]
+
+    def test_single_outer(self):
+        result = classify_subpaths(self._square(0, 0, 10, 10))
+        assert len(result) == 1
+        assert result[0]['is_outer'] is True
+        assert result[0]['depth'] == 0
+
+    def test_outer_with_one_cutout(self):
+        outer = self._square(0, 0, 20, 20)
+        inner = self._square(5, 5, 15, 15)
+        result = classify_subpaths(outer + inner)
+        assert len(result) == 2
+        outer_classes = [r for r in result if r['depth'] == 0]
+        inner_classes = [r for r in result if r['depth'] == 1]
+        assert len(outer_classes) == 1 and outer_classes[0]['is_outer'] is True
+        assert len(inner_classes) == 1 and inner_classes[0]['is_outer'] is False
+
+    def test_island_in_cutout_is_outer(self):
+        """Островок в дырке — снова outer (чётность глубины 2)."""
+        plate = self._square(0, 0, 30, 30)
+        hole = self._square(5, 5, 25, 25)
+        island = self._square(10, 10, 20, 20)
+        result = classify_subpaths(plate + hole + island)
+        depths = sorted(r['depth'] for r in result)
+        assert depths == [0, 1, 2]
+        # depth 0 и 2 — outer; depth 1 — inner
+        for r in result:
+            assert r['is_outer'] == (r['depth'] % 2 == 0)
+
+    def test_two_separate_outers(self):
+        """Два не вложенных контура — оба outer."""
+        a = self._square(0, 0, 10, 10)
+        b = self._square(20, 20, 30, 30)
+        result = classify_subpaths(a + b)
+        assert len(result) == 2
+        assert all(r['is_outer'] for r in result)
+        assert all(r['depth'] == 0 for r in result)
 
 
 class TestClosedContourValidation:

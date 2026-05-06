@@ -4,7 +4,9 @@
 import math
 import os
 from typing import List, Dict, Tuple, Optional
-from core.polygon_ops import offset_segments, insert_tabs, flatten
+from core.polygon_ops import (
+    offset_segments, insert_tabs, flatten, classify_subpaths,
+)
 from core.gcode_generator import (
     write_tool_start, write_tool_parking,
     emit_rapid_xy, emit_mill_xy, emit_plunge_z, emit_retract_z,
@@ -63,54 +65,84 @@ def build_outline_section(buf, segments: List[Dict], filename: str,
     buf.write(f"; Mill feed: {mill_feed:.0f} mm/min\n")
     buf.write(f"; Plunge feed: {plunge_feed:.0f} mm/min\n\n")
 
-    # Offset контура наружу на радиус фрезы
+    # Готовим путь по каждому подконтуру отдельно. Для платы с вырезами
+    # один общий offset «склеивает» внешний контур и вырезы в один
+    # полигон — фреза переходит между ними по диагонали на рабочей
+    # глубине, разрушая плату. Решение: каждый подконтур фрезеруется
+    # независимо, между ними фреза поднимается на safe Z.
     offset_delta = tool_diameter / 2.0
-    offset_segments_list = offset_segments(segments, offset_delta, outward=True)
+    classified = classify_subpaths(segments)
 
-    if not offset_segments_list:
+    paths: List[Dict] = []
+    for cls in classified:
+        # Внешний контур → offset наружу (фреза идёт по краю, материал
+        # справа); вырез → offset ВНУТРЬ (фреза идёт по краю выреза,
+        # материал снаружи от пути) — иначе мы расширим вырез на
+        # диаметр фрезы.
+        offset_segs = offset_segments(
+            cls['segments'], offset_delta, outward=cls['is_outer'])
+        if not offset_segs:
+            buf.write("; Skipped subpath: offset failed\n")
+            continue
+        flat_points = flatten(offset_segs, tol_mm=0.02)
+        if len(flat_points) < 3:
+            buf.write("; Skipped subpath: too small\n")
+            continue
+        if direction == 'CW':
+            flat_points = list(reversed(flat_points))
+        paths.append({
+            'flat_points': flat_points,
+            'is_outer': cls['is_outer'],
+            'depth': cls['depth'],
+        })
+
+    if not paths:
         buf.write("; Error: Could not create offset contour\n")
         return
 
-    # Разворачиваем дуги в линии для упрощения
-    flat_points = flatten(offset_segments_list, tol_mm=0.02)
-
-    if len(flat_points) < 3:
-        buf.write("; Error: Contour too small\n")
-        return
-
-    # Инвертируем направление если нужно CW
-    if direction == 'CW':
-        flat_points = list(reversed(flat_points))
+    # Порядок: сначала внешний контур (плата отделяется от заготовки),
+    # потом вырезы. Tabs удерживают плату пока режутся вырезы.
+    # outer-сортировка стабильна — сохраняет относительный порядок
+    # одноуровневых подконтуров.
+    paths.sort(key=lambda p: (0 if p['is_outer'] else 1, p['depth']))
 
     # Вычисляем количество Z-проходов
     total_depth = abs(drill_z)
     n_passes = max(1, int(math.ceil(total_depth / depth_per_pass)))
 
-    # Заголовок инструмента (со шпинделем, если задан)
-    write_tool_start(buf, tool_num, tool_diameter, len(flat_points) - 1,
+    # Заголовок инструмента (со шпинделем, если задан).
+    # total_segments — общее число резных рёбер по всем подконтурам и
+    # всем Z-проходам, для отчёта в стартовой шапке.
+    total_segments = sum((len(p['flat_points']) - 1) for p in paths) * n_passes
+    write_tool_start(buf, tool_num, tool_diameter, total_segments,
                      "outline", safe_z, rapid_rate, spindle_speed=spindle_speed)
 
-    # Генерируем проходы по Z
-    for pass_idx in range(n_passes):
-        current_z = max(drill_z, -depth_per_pass * (pass_idx + 1))
-        is_last_pass = (pass_idx == n_passes - 1)
-        
-        # Tabs начинают формироваться на том проходе, где current_z <= drill_z + tab_height
-        # Это гарантирует, что итоговая высота перемычки будет равна tab_height
-        tab_start_z = drill_z + tab_height
-        should_use_tabs = (n_tabs > 0 and current_z <= tab_start_z)
+    # Цикл по подконтурам. Каждый завершается полным retract на safe_z,
+    # так что переезд между ними всегда безопасен.
+    for path_idx, path in enumerate(paths):
+        flat_points = path['flat_points']
+        is_outer = path['is_outer']
+        kind = "outer contour" if is_outer else f"inner cutout (depth={path['depth']})"
+        buf.write(f"\n; --- Subpath {path_idx + 1}/{len(paths)}: {kind} ---\n")
 
-        buf.write(f"\n; Pass {pass_idx + 1}/{n_passes}, Z={current_z:.2f}\n")
+        for pass_idx in range(n_passes):
+            current_z = max(drill_z, -depth_per_pass * (pass_idx + 1))
 
-        if should_use_tabs:
-            # Проход с tabs (начиная с того прохода, где достигается уровень перемычки)
-            _generate_tabbed_pass(buf, flat_points, current_z, safe_z,
-                                  rapid_rate, mill_feed, plunge_feed,
-                                  tab_height, n_tabs, tab_width)
-        else:
-            # Обычный проход
-            _generate_simple_pass(buf, flat_points, current_z, safe_z,
-                                  rapid_rate, mill_feed, plunge_feed)
+            # Tabs формируются ТОЛЬКО на внешнем контуре — на вырезе
+            # перемычки бессмысленны (плата вокруг выреза остаётся целой).
+            tab_start_z = drill_z + tab_height
+            should_use_tabs = (
+                is_outer and n_tabs > 0 and current_z <= tab_start_z)
+
+            buf.write(f"\n; Pass {pass_idx + 1}/{n_passes}, Z={current_z:.2f}\n")
+
+            if should_use_tabs:
+                _generate_tabbed_pass(buf, flat_points, current_z, safe_z,
+                                      rapid_rate, mill_feed, plunge_feed,
+                                      tab_height, n_tabs, tab_width)
+            else:
+                _generate_simple_pass(buf, flat_points, current_z, safe_z,
+                                      rapid_rate, mill_feed, plunge_feed)
 
     # Парковка
     write_tool_parking(buf, params.get('park_z', 30), rapid_rate)
