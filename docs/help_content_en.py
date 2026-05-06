@@ -116,9 +116,16 @@ HELP_SECTIONS = {
             {"type": "bullet", "text": "%MOMM*% / %MOIN*% — units: mm or inches"},
             {"type": "bullet", "text": "G01 — linear interpolation"},
             {"type": "bullet", "text": "G02 / G03 — clockwise / counter-clockwise arc"},
-            {"type": "bullet", "text": "G36 / G37 — region mode (closed contour)"},
+            {"type": "bullet", "text": "G36 / G37 — region mode (closed contour, internal cutouts)"},
+            {"type": "bullet", "text": "G75 — multi-quadrant arc mode (KiCad)"},
             {"type": "bullet", "text": "D01 — cut, D02 — move without cutting"},
             {"type": "bullet", "text": "M02 — end of file"},
+
+            {"type": "h2", "text": "Automatic stroke stitching"},
+            {"type": "paragraph", "text": "KiCad Edge.Cuts exports contours as separate strokes (lines and arcs). The program automatically assembles them into closed contours by connecting strokes at matching endpoints."},
+            {"type": "bullet", "text": "Support for external contours and internal cutouts"},
+            {"type": "bullet", "text": "Automatic contour type detection by traversal direction"},
+            {"type": "bullet", "text": "Smart offset: outward for external contours, inward for internal ones"},
 
             {"type": "h2", "text": "What is ignored"},
             {"type": "bullet", "text": "Apertures (%ADD...*%, Dnn*) — they don't affect the outline geometry"},
@@ -400,6 +407,13 @@ HELP_SECTIONS = {
             {"type": "bullet", "text": "Choose a .GBR / .G / .GBP / .GKO file"},
             {"type": "bullet", "text": "The outline appears on the canvas as a dark gray line"},
 
+            {"type": "h2", "text": "Automatic contour type detection"},
+            {"type": "paragraph", "text": "The program automatically determines the type of each contour (external or internal cutout) by traversal direction and applies the appropriate offset:"},
+            {"type": "bullet", "text": "External contour (CCW) — offset outward for board trimming"},
+            {"type": "bullet", "text": "Internal cutout (CW) — offset inward for milling holes"},
+            {"type": "bullet", "text": "Support for multiple contours in a single file"},
+            {"type": "bullet", "text": "Tabs are placed only on external contours"},
+
             {"type": "h2", "text": "Hole validation"},
             {"type": "paragraph", "text": "After loading the outline, the program checks each hole — whether it lies inside the polygon. Holes outside the outline are highlighted with red circles."},
 
@@ -436,9 +450,9 @@ HELP_SECTIONS = {
             {"type": "bullet", "text": "The program calculates the number of passes to drill_z automatically"},
 
             {"type": "h2", "text": "Algorithm"},
-            {"type": "bullet", "text": "1. Offset outline outward by mill radius"},
+            {"type": "bullet", "text": "1. Offset the contour by the milling cutter radius outward or inward, depending on the contour type"},
             {"type": "bullet", "text": "2. Multi-pass cutting with depth_per_pass step"},
-            {"type": "bullet", "text": "3. Tabs are taken into account on the last pass"},
+            {"type": "bullet", "text": "3. Tabs are taken into account"},
 
             {"type": "tip", "text": "For 1.6 mm FR-4 a good combination is: 2 mm mill, 3 passes of 0.6 mm, 150 mm/min feed."},
 
@@ -1196,7 +1210,14 @@ HELP_SECTIONS = {
             {"type": "title", "text": "Version and license"},
 
             {"type": "h2", "text": "Current version"},
-            {"type": "bullet", "text": "ExcellonToG-Code 5.3 (May 2026)"},
+            {"type": "bullet", "text": "ExcellonToG-Code 5.4 (May 2026)"},
+            
+            {"type": "h2", "text": "Key changes in v5.4"},
+            {"type": "bullet", "text": "✂️ Arbitrary shape contours — finishing cut now supports external contour and internal cutouts"},
+            {"type": "bullet", "text": "🔍 Automatic contour type detection — program recognizes external and internal contours, applying offset outward or inward"},
+            {"type": "bullet", "text": "🔧 Internal cutout milling — automatic G-code generation for cutouts within the board"},
+            {"type": "bullet", "text": "🧩 KiCad Edge.Cuts support — automatic stroke stitching into closed contours"},
+            {"type": "bullet", "text": "🐛 Fixed negative coordinate parsing in Gerber (arcs were displayed incorrectly)"},
             
             {"type": "h2", "text": "Key changes in v5.3"},
             {"type": "bullet", "text": "📐 Exp format support (explicit decimal point) — correct handling of KiCAD files with coordinates like X1.0Y59.0"},
