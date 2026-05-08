@@ -1,8 +1,11 @@
 """
 Геометрические операции с полигонами и контурами.
 """
+import logging
 import math
 from typing import List, Dict, Tuple, Optional, Any
+
+logger = logging.getLogger(__name__)
 
 
 # ==========================================================
@@ -29,8 +32,16 @@ def bounding_box(segments: List[Dict[str, Any]]) -> Tuple[float, float, float, f
 
 
 def polygon_signed_area(points: List[Tuple[float, float]]) -> float:
-    """Вычислить ориентированную площадь многоугольника.
-    Положительная = CCW, отрицательная = CW.
+    """Вычислить ориентированную площадь многоугольника (трапецеидальная сумма).
+
+    Возвращает sum((x2-x1)*(y2+y1))/2. Знак этой суммы:
+        Положительный → обход вершин по часовой стрелке (CW).
+        Отрицательный → обход против часовой стрелки (CCW).
+    Это противоположно стандартной shoelace-конвенции, где положительная
+    площадь соответствует CCW. Менять знак НЕЛЬЗЯ — `_perpendicular` и
+    `offset_segments` калиброваны именно на эту трапецеидальную конвенцию;
+    смена знака потребует синхронной перекалибровки нормалей и тихо вывернет
+    все обводки. См. также `normalize_to_cw_for_offset`.
     """
     if len(points) < 3:
         return 0.0
@@ -43,14 +54,29 @@ def polygon_signed_area(points: List[Tuple[float, float]]) -> float:
     return area / 2.0
 
 
-def is_ccw(points: List[Tuple[float, float]]) -> bool:
-    """True если многоугольник ориентирован против часовой стрелки."""
+def is_cw_orientation(points: List[Tuple[float, float]]) -> bool:
+    """True, если вершины многоугольника обходятся ПО часовой стрелке (CW).
+
+    Прежнее имя `is_ccw` было неверным: функция всегда возвращала True
+    именно для CW-полигонов из-за трапецеидальной конвенции в
+    `polygon_signed_area`. Имя переименовано, чтобы будущие правки нормали
+    (`_perpendicular`) или offset не сбивались с толку.
+    """
     return polygon_signed_area(points) > 0
 
 
-def normalize_to_ccw(points: List[Tuple[float, float]]) -> List[Tuple[float, float]]:
-    """Нормализовать многоугольник к CCW ориентации."""
-    if is_ccw(points):
+def normalize_to_cw_for_offset(points: List[Tuple[float, float]]) -> List[Tuple[float, float]]:
+    """Привести вершины к обходу ПО часовой стрелке (CW).
+
+    Имя честно отражает поведение: функция используется в `offset_segments`
+    и предполагает CW-ориентацию, потому что `_perpendicular(outward=True)`
+    для CW даёт корректную внешнюю нормаль. Раньше функция называлась
+    `normalize_to_ccw`, что лгало (трапецеидальная конвенция инвертирует
+    стандартный знак площади) — любая правка `_perpendicular`, опирающаяся
+    на «нормализованный CCW», тихо вывернула бы все обводки. Менять только
+    синхронно с `_perpendicular`.
+    """
+    if is_cw_orientation(points):
         return points
     return list(reversed(points))
 
@@ -258,6 +284,200 @@ def classify_subpaths(segments: List[Dict[str, Any]],
     return result
 
 
+# ==========================================================
+# Loop assembly (stitching) — собирает несвязанные штрихи
+# Gerber-выгрузки в замкнутые петли. Нужно для KiCad-стиля
+# Edge.Cuts, где контур задан набором отдельных D02→D01
+# штрихов в произвольном порядке.
+# ==========================================================
+
+def _reverse_segment(seg: Dict[str, Any]) -> Dict[str, Any]:
+    """Инвертировать сегмент (поменять направление обхода).
+
+    Линия: меняем p1 ↔ p2. Дуга: меняем start ↔ end и инвертируем
+    флаг ccw — центр и радиус остаются прежними. Метку
+    `subpath_start` не копируем (она ставится сшивкой заново).
+    """
+    if seg['type'] == 'line':
+        return {'type': 'line', 'p1': seg['p2'], 'p2': seg['p1']}
+    # arc
+    return {
+        'type': 'arc',
+        'center': seg['center'],
+        'r': seg['r'],
+        'start': seg['end'],
+        'end': seg['start'],
+        'ccw': not seg['ccw'],
+    }
+
+
+def _subpath_is_chain(sp: List[Dict[str, Any]], tol_mm: float) -> bool:
+    """Подконтур уже собран в непрерывную цепь — соседи стыкуются
+    end[i] ≈ start[i+1]. Без этого «замкнутость» по start[0]≈end[-1]
+    может быть случайной (например, отдельные одиночные штрихи).
+    """
+    for i in range(len(sp) - 1):
+        e = _seg_end(sp[i])
+        s = _seg_start(sp[i + 1])
+        if math.hypot(e[0] - s[0], e[1] - s[1]) > tol_mm:
+            return False
+    return True
+
+
+def _subpath_is_closed_chain(sp: List[Dict[str, Any]], tol_mm: float) -> bool:
+    """Подконтур — собранная замкнутая петля: ≥2 сегмента, цепь
+    непрерывна, и start первого = end последнего. Одиночный
+    сегмент не считаем замкнутым (даже если это полная окружность —
+    встречается редко, не оптимизируем под этот случай)."""
+    if len(sp) < 2:
+        return False
+    if not _subpath_is_chain(sp, tol_mm):
+        return False
+    first = _seg_start(sp[0])
+    last = _seg_end(sp[-1])
+    return math.hypot(first[0] - last[0], first[1] - last[1]) <= tol_mm
+
+
+def stitch_subpaths(segments: List[Dict[str, Any]],
+                    tol_mm: float = 1e-3) -> List[Dict[str, Any]]:
+    """Собрать неупорядоченные штрихи в замкнутые петли.
+
+    KiCad для слоя Edge.Cuts эмитит контур как набор отдельных
+    D02→D01 штрихов в произвольном порядке (без G36-региона). Каждый
+    штрих в нашем парсере становится самостоятельным подконтуром из
+    1 сегмента — не замкнутым. Без сшивки is_closed_contour вернёт
+    False, а offset/tabs упадут.
+
+    Алгоритм безопасен для уже корректно собранных данных:
+    подконтуры, которые УЖЕ замкнутая цепь (Altium-стиль G36-регион
+    или внешний контур одним непрерывным путём), не трогаются.
+    Сшиваются только подконтуры, не прошедшие проверку — обычно это
+    одиночные штрихи KiCad, лежащие в произвольном порядке.
+
+    Args:
+        segments: плоский список сегментов с метками subpath_start
+        tol_mm: допуск на стыковку end[i] ↔ start[i+1] (по умолч. 1 мкм)
+
+    Returns:
+        Плоский список сегментов в новом порядке. Метка
+        `subpath_start=True` стоит на первом сегменте каждого
+        подконтура (как замкнутого, так и оставшегося открытым).
+    """
+    if not segments:
+        return []
+
+    sps = split_subpaths(segments)
+
+    kept: List[List[Dict[str, Any]]] = []
+    pool: List[Dict[str, Any]] = []
+    for sp in sps:
+        if _subpath_is_closed_chain(sp, tol_mm):
+            kept.append(sp)
+        else:
+            # Очищаем метку subpath_start на сегментах из пула —
+            # она устарела, поставим заново после сборки.
+            for seg in sp:
+                seg = dict(seg)
+                seg.pop('subpath_start', None)
+                pool.append(seg)
+
+    # Шаг 3. Собираем содержимое пула в петли.
+    assembled: List[List[Dict[str, Any]]] = []
+    used = [False] * len(pool)
+
+    def _find_match(tail_pt: Tuple[float, float],
+                    skip_idx: int) -> Tuple[int, bool]:
+        """Найти неиспользованный сегмент, чей конец совпадает с tail_pt.
+        Возвращает (idx, need_invert) или (-1, False) если ничего не нашли.
+        Допуск — tol_mm.
+        """
+        best_idx = -1
+        best_invert = False
+        best_dist = tol_mm
+        for i, seg in enumerate(pool):
+            if used[i] or i == skip_idx:
+                continue
+            s = _seg_start(seg)
+            d = math.hypot(s[0] - tail_pt[0], s[1] - tail_pt[1])
+            if d <= best_dist:
+                best_idx = i
+                best_invert = False
+                best_dist = d
+                if d == 0.0:
+                    return best_idx, best_invert
+            e = _seg_end(seg)
+            d = math.hypot(e[0] - tail_pt[0], e[1] - tail_pt[1])
+            if d <= best_dist:
+                best_idx = i
+                best_invert = True
+                best_dist = d
+                if d == 0.0:
+                    return best_idx, best_invert
+        return best_idx, best_invert
+
+    for start_i, seg0 in enumerate(pool):
+        if used[start_i]:
+            continue
+        used[start_i] = True
+        chain: List[Dict[str, Any]] = [seg0]
+        head = _seg_start(seg0)
+        tail = _seg_end(seg0)
+
+        def _closed() -> bool:
+            return math.hypot(head[0] - tail[0], head[1] - tail[1]) <= tol_mm
+
+        # Расширяем за tail: ищем сегмент, чей конец совпадает с tail;
+        # если совпал start → берём как есть; если совпал end →
+        # инвертируем (тогда новый.start = старый.end ≈ tail).
+        while not _closed():
+            idx, invert = _find_match(tail, skip_idx=-1)
+            if idx < 0:
+                break
+            used[idx] = True
+            seg = _reverse_segment(pool[idx]) if invert else pool[idx]
+            chain.append(seg)
+            tail = _seg_end(seg)
+
+        # Расширяем за head: для префикса нужно, чтобы end вставляемого
+        # совпал с head. Логика инверсии — зеркальная: если у сегмента
+        # start ≈ head → его надо ИНВЕРТИРОВАТЬ, чтобы новый.end = head;
+        # если end ≈ head → ставим как есть.
+        while not _closed():
+            idx, invert = _find_match(head, skip_idx=-1)
+            if idx < 0:
+                break
+            used[idx] = True
+            seg = pool[idx] if invert else _reverse_segment(pool[idx])
+            chain.insert(0, seg)
+            head = _seg_start(seg)
+
+        assembled.append(chain)
+        if not _closed():
+            logger.warning(
+                "stitch_subpaths: open chain of %d segments, "
+                "gap %.6f mm at (%.4f, %.4f) <-> (%.4f, %.4f)",
+                len(chain),
+                math.hypot(head[0] - tail[0], head[1] - tail[1]),
+                head[0], head[1], tail[0], tail[1])
+
+    # Шаг 5. Собираем плоский результат: kept в исходном порядке,
+    # затем собранные петли (новые подконтуры).
+    result: List[Dict[str, Any]] = []
+    for sp in kept + assembled:
+        if not sp:
+            continue
+        # subpath_start ставим на первый сегмент. Внутри подконтура
+        # метку чистим — иначе split_subpaths распилит цепь обратно.
+        for i, seg in enumerate(sp):
+            seg = dict(seg) if i > 0 else seg
+            if i == 0:
+                seg['subpath_start'] = True
+            else:
+                seg.pop('subpath_start', None)
+            result.append(seg)
+    return result
+
+
 def _flatten_arc(arc: Dict[str, Any], tol_mm: float) -> List[Tuple[float, float]]:
     """Аппроксимировать дугу хордами с заданной точностью."""
     center = arc['center']
@@ -279,6 +499,22 @@ def _flatten_arc(arc: Dict[str, Any], tol_mm: float) -> List[Tuple[float, float]
             end_angle -= 2 * math.pi
 
     delta_angle = abs(end_angle - start_angle)
+
+    # Полная окружность: Gerber-арка вида D01 «из точки P в точку P» с
+    # валидным (i, j) — стандартная конвенция RS-274X для full circle.
+    # После нормализации углов end_angle == start_angle, и без guard'а
+    # получался вырожденный «полигон» из одной хорды нулевой длины,
+    # который тихо ломал последующий offset/tabs. Условие r > 1e-6
+    # защищает от настоящих нуль-длинных дуг (parser их и так отсекает
+    # в gerber_parser.py:150, но подстраховка дешёвая).
+    if delta_angle < 1e-9 and r > 1e-6:
+        delta_angle = 2 * math.pi
+        # Закольцовываем угол так, чтобы интерполяция ниже корректно
+        # обходила окружность в нужную сторону.
+        if ccw:
+            end_angle = start_angle + 2 * math.pi
+        else:
+            end_angle = start_angle - 2 * math.pi
 
     # Вычисляем количество сегментов
     # Стрелка прогиба: h = r * (1 - cos(theta/2))
@@ -342,6 +578,86 @@ def _line_intersection(p1: Tuple[float, float], d1: Tuple[float, float],
     return (x1 + t * dx1, y1 + t * dy1)
 
 
+def _segments_strictly_cross(p1: Tuple[float, float], p2: Tuple[float, float],
+                             p3: Tuple[float, float], p4: Tuple[float, float]) -> bool:
+    """True, если отрезки [p1, p2] и [p3, p4] СТРОГО пересекаются во внутренних точках.
+
+    «Строго» = не считаются пересечением: общий конец, T-касание, коллинеарное
+    наложение. Это и нужно для проверки self-intersection полигона: соседние
+    рёбра offset-полигона ВСЕГДА имеют общую точку (концевую) — и это норма;
+    проблема только если несоседние рёбра пересекают друг друга.
+    """
+    def _orient(a, b, c):
+        return (b[0] - a[0]) * (c[1] - a[1]) - (b[1] - a[1]) * (c[0] - a[0])
+    o1 = _orient(p1, p2, p3)
+    o2 = _orient(p1, p2, p4)
+    o3 = _orient(p3, p4, p1)
+    o4 = _orient(p3, p4, p2)
+    return (o1 * o2 < 0) and (o3 * o4 < 0)
+
+
+def _has_self_intersection(line_segs: List[Dict[str, Any]]) -> bool:
+    """Найти признаки бракованного offset-полигона.
+
+    Корректный offset замкнутого простого полигона тоже простой. При слишком
+    большом delta на острых вогнутых углах смещённые рёбра «протыкают» друг
+    друга и результат бракован — если погнать его в G-code, фреза пройдёт по
+    петле/коллапсу и **испортит деталь**. Поэтому offset_segments возвращает
+    [], а caller пишет предупреждение в G-code.
+
+    Детектируем три формы брака:
+      1. Нуль-длинное ребро (p1 == p2) — край стянулся в точку.
+      2. Соседние рёбра с совпадающими концами (дубликат вершины) — два угла
+         схлопнулись в один; полигон вырожден локально.
+      3. Строгое пересечение двух **несоседних** рёбер во внутренних точках —
+         классический self-intersect. Соседи всегда касаются концом и не
+         учитываются (включая пару [0]/[n-1] в замкнутом полигоне).
+
+    O(N²) по числу рёбер; для типичных PCB-контуров (десятки рёбер) — не узкое
+    место.
+    """
+    eps = 1e-9
+    line_only = [s for s in line_segs if s.get('type') == 'line']
+    n = len(line_only)
+    if n < 3:
+        return False
+
+    # 1. Нуль-длинные рёбра
+    for s in line_only:
+        p1, p2 = s['p1'], s['p2']
+        if abs(p1[0] - p2[0]) < eps and abs(p1[1] - p2[1]) < eps:
+            return True
+
+    # 2. Дубликаты соседних вершин (концы рёбер схлопнулись)
+    for i in range(n):
+        a = line_only[i]['p2']
+        b = line_only[(i + 1) % n]['p1']
+        if abs(a[0] - b[0]) < eps and abs(a[1] - b[1]) < eps:
+            # Это нормально (концы соседних рёбер совпадают), пропускаем.
+            pass
+        # Реальный признак вырождения — совпадение НЕсоседних p1.
+    for i in range(n):
+        for j in range(i + 2, n):
+            if i == 0 and j == n - 1:
+                continue
+            a = line_only[i]['p1']
+            b = line_only[j]['p1']
+            if abs(a[0] - b[0]) < eps and abs(a[1] - b[1]) < eps:
+                return True
+
+    # 3. Строгое пересечение несоседних рёбер
+    for i in range(n):
+        si = line_only[i]
+        for j in range(i + 2, n):
+            if i == 0 and j == n - 1:
+                continue
+            sj = line_only[j]
+            if _segments_strictly_cross(si['p1'], si['p2'],
+                                        sj['p1'], sj['p2']):
+                return True
+    return False
+
+
 def offset_segments(segments: List[Dict[str, Any]], delta: float,
                     outward: bool = True) -> List[Dict[str, Any]]:
     """
@@ -391,8 +707,9 @@ def offset_segments(segments: List[Dict[str, Any]], delta: float,
         return segments
     points = dedup
 
-    # Нормализуем к CCW
-    points = normalize_to_ccw(points)
+    # Нормализуем к CW — этого требует _perpendicular(outward=True)
+    # (см. docstring normalize_to_cw_for_offset).
+    points = normalize_to_cw_for_offset(points)
 
     # Для outward=True с CCW: смещаем вправо от направления (внешняя нормаль)
     # Для outward=False: смещаем влево
@@ -439,6 +756,19 @@ def offset_segments(segments: List[Dict[str, Any]], delta: float,
         p2 = offset_points[(i + 1) % len(offset_points)]
         result.append({'type': 'line', 'p1': p1, 'p2': p2})
 
+    # Защита от молчаливо испорченной детали: при слишком большом delta на
+    # вогнутом углу смещённые рёбра пересекают друг друга — полигон выворачивается
+    # сам в себя. Если погнать такой контур в G-code, фреза пройдёт по петле и
+    # «съест» материал внутри полигона. Лучше вернуть [] и заставить caller
+    # сообщить пользователю, чем тихо испортить плату.
+    if _has_self_intersection(result):
+        logger.warning(
+            "offset_segments: self-intersection detected at delta=%.3f mm "
+            "(%s) — offset radius too large for sharp concave corner; "
+            "returning []",
+            delta, "outward" if outward else "inward")
+        return []
+
     return result
 
 
@@ -480,7 +810,12 @@ def segment_length(seg: Dict[str, Any]) -> float:
         else:
             while end_angle > start_angle:
                 end_angle -= 2 * math.pi
-        return r * abs(end_angle - start_angle)
+        delta = abs(end_angle - start_angle)
+        # Full circle (см. _flatten_arc): start ≈ end + r > 0 → 2π,
+        # иначе длина = 0 и tabs не разместятся на круглом контуре.
+        if delta < 1e-9 and r > 1e-6:
+            delta = 2 * math.pi
+        return r * delta
     return 0.0
 
 
@@ -520,6 +855,15 @@ def point_at_length(segments: List[Dict[str, Any]], target_length: float) -> Tup
             else:
                 while end_angle > start_angle:
                     end_angle -= 2 * math.pi
+
+            # Full circle (см. _flatten_arc): start ≈ end + r > 0 → 2π.
+            # Без этого arc_len = 0 и target_length никогда не попал бы
+            # внутрь круглого сегмента — обход «теряет» точку.
+            if abs(end_angle - start_angle) < 1e-9 and r > 1e-6:
+                if ccw:
+                    end_angle = start_angle + 2 * math.pi
+                else:
+                    end_angle = start_angle - 2 * math.pi
 
             arc_len = r * abs(end_angle - start_angle)
 

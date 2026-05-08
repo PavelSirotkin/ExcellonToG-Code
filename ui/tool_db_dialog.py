@@ -85,11 +85,11 @@ def show_tool_db_dialog(parent, tool_db: ToolDatabase):
 
     dlg = tk.Toplevel(parent)
     dlg.title(t("tool_db.title"))
-    dlg.geometry("1000x500")
+    dlg.geometry("1150x500")
     dlg.resizable(False, True)
     dlg.transient(parent)
     dlg.grab_set()
-    
+
     # Применить тему к окну
     cfg.register_themed_widget(dlg, bg="panel_bg")
 
@@ -99,10 +99,10 @@ def show_tool_db_dialog(parent, tool_db: ToolDatabase):
     py = parent.winfo_rooty()
     pw = parent.winfo_width()
     ph = parent.winfo_height()
-    dw = 1000
+    dw = 1150
     dh = 500
     dlg.geometry(f"+{px + (pw - dw) // 2}+{py + (ph - dh) // 2}")
-    dlg.minsize(1000, dh)
+    dlg.minsize(1150, dh)
 
     # ---- Вкладки ----
     # Настройка стилей для Notebook
@@ -128,7 +128,7 @@ def show_tool_db_dialog(parent, tool_db: ToolDatabase):
     notebook.add(drill_frame, text=t("tool_db.tab.drills"))
 
     drill_tree = ttk.Treeview(drill_frame, columns=(
-        "diameter", "spindle_speed", "plunge_feed", "retract_feed"
+        "diameter", "spindle_speed", "plunge_feed", "retract_feed", "extra_depth"
     ), show="headings", height=15)
 
     for col, width, heading_key in [
@@ -136,6 +136,7 @@ def show_tool_db_dialog(parent, tool_db: ToolDatabase):
         ("spindle_speed", 200, "tool_db.col.spindle_speed"),
         ("plunge_feed", 220, "tool_db.col.plunge_feed"),
         ("retract_feed", 200, "tool_db.col.retract_feed"),
+        ("extra_depth", 150, "tool_db.col.extra_depth"),
     ]:
         heading = t(heading_key)
         drill_tree.heading(col, text=heading, anchor="center")
@@ -218,7 +219,9 @@ def show_tool_db_dialog(parent, tool_db: ToolDatabase):
             tag = "even" if i % 2 == 0 else "odd"
             drill_tree.insert("", "end", tags=(tag,), values=(
                 td.get("diameter", 0), td.get("spindle_speed", 0),
-                td.get("plunge_feed", 0), td.get("retract_feed", 0)
+                td.get("plunge_feed", 0), td.get("retract_feed", 0),
+                # extra_depth: для legacy-записей без поля показываем 0.
+                td.get("extra_depth", 0)
             ))
 
     def _populate_endmills():
@@ -315,6 +318,7 @@ def _edit_drill(tool_db: ToolDatabase, diameter, tree, dlg_parent=None):
         ("spindle_speed", t("tool_db.fld.spindle_speed"), "int"),
         ("plunge_feed", t("tool_db.fld.plunge_feed"), "float"),
         ("retract_feed", t("tool_db.fld.retract_feed"), "float"),
+        ("extra_depth", t("tool_db.fld.extra_depth"), "float"),
     ]
 
     entries = {}
@@ -326,14 +330,17 @@ def _edit_drill(tool_db: ToolDatabase, diameter, tree, dlg_parent=None):
         r = tk.Frame(frm)
         cfg.register_themed_widget(r, bg="panel_bg")
         r.pack(fill="x", pady=2)
-        
+
         lbl = tk.Label(r, text=label, width=28, anchor="w")
         cfg.register_themed_widget(lbl, bg="panel_bg", fg="panel_fg")
         lbl.pack(side="left")
-        
+
         e = tk.Entry(r, width=12, justify="center")
-        if existing and key in existing:
-            e.insert(0, str(existing[key]))
+        if existing:
+            # .get(key, 0) — для legacy-записей без новых полей (extra_depth)
+            # показываем «0» вместо пустого поля. На существующие поля не
+            # влияет: они всегда есть в записи после add_drill.
+            e.insert(0, str(existing.get(key, 0)))
         elif key == "diameter" and not is_new:
             e.insert(0, str(diameter))
         if key == "diameter" and not is_new:
@@ -516,7 +523,9 @@ def _populate_tree_drills(tree, tool_db):
     for i, td in enumerate(tool_db.get_all_drills()):
         tag = "even" if i % 2 == 0 else "odd"
         tree.insert("", "end", tags=(tag,), values=(
-            td["diameter"], td["spindle_speed"], td["plunge_feed"], td["retract_feed"]
+            td["diameter"], td["spindle_speed"], td["plunge_feed"], td["retract_feed"],
+            # extra_depth: для legacy-записей без поля показываем 0.
+            td.get("extra_depth", 0)
         ))
 
 

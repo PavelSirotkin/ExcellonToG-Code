@@ -82,7 +82,16 @@ def build_outline_section(buf, segments: List[Dict], filename: str,
         offset_segs = offset_segments(
             cls['segments'], offset_delta, outward=cls['is_outer'])
         if not offset_segs:
-            buf.write("; Skipped subpath: offset failed\n")
+            # offset_segments возвращает [] либо для незамкнутого подконтура,
+            # либо для self-intersection (delta больше радиуса вписанной
+            # окружности у вогнутого угла — см. polygon_ops._has_self_intersection).
+            # Самая частая практическая причина — слишком большой диаметр фрезы
+            # для острого внутреннего угла. Пишем подсказку прямо в G-code,
+            # чтобы оператор увидел причину пропуска без чтения логов.
+            buf.write(
+                "; Skipped subpath: offset failed "
+                "(probable cause: tool radius too large for a sharp concave "
+                "corner — try smaller tool_diameter)\n")
             continue
         flat_points = flatten(offset_segs, tol_mm=0.02)
         if len(flat_points) < 3:
@@ -100,11 +109,15 @@ def build_outline_section(buf, segments: List[Dict], filename: str,
         buf.write("; Error: Could not create offset contour\n")
         return
 
-    # Порядок: сначала внешний контур (плата отделяется от заготовки),
-    # потом вырезы. Tabs удерживают плату пока режутся вырезы.
-    # outer-сортировка стабильна — сохраняет относительный порядок
-    # одноуровневых подконтуров.
-    paths.sort(key=lambda p: (0 if p['is_outer'] else 1, p['depth']))
+    # Порядок: сначала внутренние подконтуры, последним — внешний контур
+    # (плата отделяется от заготовки в самом конце). Пока плата держится
+    # массивом заготовки, вырезы режутся максимально жёстко закреплённой
+    # деталью; tabs на внешнем контуре нужны только на финальной операции.
+    # Сортируем по убыванию глубины: depth 3 (вырез в островке) → depth 2
+    # (островок) → depth 1 (вырез в плате) → depth 0 (внешний контур).
+    # Сортировка стабильна — относительный порядок подконтуров одного
+    # уровня сохраняется.
+    paths.sort(key=lambda p: -p['depth'])
 
     # Вычисляем количество Z-проходов
     total_depth = abs(drill_z)
@@ -181,6 +194,42 @@ def _generate_simple_pass(buf, points: List[Tuple[float, float]],
     emit_retract_z(buf, safe_z, rapid_rate)
 
 
+def _rotate_to_safe_plunge(tabbed_segments: List[Dict]) -> List[Dict]:
+    """Повернуть замкнутый список сегментов так, чтобы первое погружение
+    произошло в середине самого длинного non-tab сегмента.
+
+    Найденный сегмент разбивается пополам в точке midpoint M, и список
+    переставляется: [M..p2_seg, ...следующие сегменты..., ...предыдущие
+    сегменты..., p1_seg..M]. Контур остаётся замкнутым, но стартует и
+    заканчивается в M — на максимальном удалении от ближайшей tab-границы.
+    Если все сегменты помечены как tab или non-tab сегментов нет,
+    возвращается исходный список без изменений.
+    """
+    if not tabbed_segments:
+        return tabbed_segments
+
+    non_tab_idx = [i for i, s in enumerate(tabbed_segments)
+                   if not s.get('is_tab', False) and s.get('type') == 'line']
+    if not non_tab_idx:
+        return tabbed_segments
+
+    def _seg_len(s: Dict) -> float:
+        p1, p2 = s['p1'], s['p2']
+        return math.hypot(p2[0] - p1[0], p2[1] - p1[1])
+
+    best = max(non_tab_idx, key=lambda i: _seg_len(tabbed_segments[i]))
+    seg = tabbed_segments[best]
+    p1, p2 = seg['p1'], seg['p2']
+    mid = ((p1[0] + p2[0]) / 2.0, (p1[1] + p2[1]) / 2.0)
+    second_half = {'type': 'line', 'p1': mid, 'p2': p2}
+    first_half = {'type': 'line', 'p1': p1, 'p2': mid}
+
+    return ([second_half]
+            + tabbed_segments[best + 1:]
+            + tabbed_segments[:best]
+            + [first_half])
+
+
 def _generate_tabbed_pass(buf, points: List[Tuple[float, float]],
                           target_z: float, safe_z: float,
                           rapid_rate: float, mill_feed: float,
@@ -217,6 +266,18 @@ def _generate_tabbed_pass(buf, points: List[Tuple[float, float]],
 
     # Вставляем tabs
     tabbed_segments = insert_tabs(segments, n_tabs, tab_width)
+
+    # Сдвигаем стартовую точку подальше от любой перемычки. Иначе первое
+    # погружение происходит в points[0] — а оно может оказаться внутри
+    # tab-диапазона (особенно при wrap-around, когда центр перемычки
+    # лежит у самого начала/конца контура) или просто рядом с краем
+    # перемычки. Фреза диаметра, сравнимого с tab_width, при погружении
+    # на полную глубину срезает мост. Решение: стартовать в середине
+    # самого длинного non-tab сегмента — это даёт максимальный зазор
+    # до ближайшей перемычки.
+    tabbed_segments = _rotate_to_safe_plunge(tabbed_segments)
+    if not tabbed_segments:
+        return
 
     # Подъезд к первой точке на быстром ходе
     first = tabbed_segments[0]['p1']

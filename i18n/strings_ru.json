@@ -99,6 +99,7 @@
   "app.err.invalid_gerber": "Неверный формат файла. Ожидается Gerber RS-274X.",
   "app.err.parsing": "Ошибка парсинга: {error}",
   "app.err.parsing_gerber": "Ошибка парсинга Gerber: {error}",
+  "app.err.gen_failed": "Не удалось сгенерировать G-code:\n{error}",
   "app.err.no_tools": "Файл не содержит данных об инструментах.",
   "app.err.no_slots": "Файл не содержит данных о слотах.",
   "app.err.no_outline_data": "Файл не содержит данных о контуре.",
@@ -250,7 +251,7 @@
   "legend.section.outline": "Обрезка по контуру:",
   "legend.row.holes": "T{tool} ⌀{diameter:.2f}мм ({count} отв.)",
   "legend.row.slots": "T{tool} ⌀{diameter:.2f}мм ({count} слот.)",
-  "legend.row.outline": "⌀{diameter:.2f}мм  (фреза, {n_tabs} tabs)",
+  "legend.row.outline": "⌀{diameter:.2f}мм  (фреза, {n_tabs} пер.)",
   "legend.total": "Всего: {holes} отв. + {slots} слот.",
 
   "stats.title": "📊 Статистика проекта",
@@ -277,6 +278,7 @@
   "tool_db.col.spindle_speed": "Частота вращения (об/мин)",
   "tool_db.col.plunge_feed": "Скорость погружения (мм/мин)",
   "tool_db.col.retract_feed": "Скорость подъёма (мм/мин)",
+  "tool_db.col.extra_depth": "Доп. глубина (мм)",
   "tool_db.col.cutting_feed": "Скорость реза (мм/мин)",
   "tool_db.col.stepover": "Ширина перекрытия (%)",
   "tool_db.btn.add": "Добавить",
@@ -305,6 +307,7 @@
   "tool_db.fld.spindle_speed": "Частота вращения (об/мин):",
   "tool_db.fld.plunge_feed": "Скорость погружения (мм/мин):",
   "tool_db.fld.retract_feed": "Скорость подъёма (мм/мин):",
+  "tool_db.fld.extra_depth": "Доп. глубина (мм):",
   "tool_db.fld.cutting_feed": "Скорость реза (мм/мин):",
   "tool_db.fld.stepover": "Ширина перекрытия (%):",
 

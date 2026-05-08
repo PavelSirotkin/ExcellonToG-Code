@@ -84,7 +84,7 @@ def create_files_panel(parent, localize_widget, handlers):
     format_lbl.pack(side="left")
     cfg.register_themed_widget(format_lbl, bg="panel_bg", fg="panel_fg")
     
-    format_combobox = ttk.Combobox(format_frame, values=["2.4", "3.3", "4.2"], width=6)
+    format_combobox = ttk.Combobox(format_frame, values=["2.4", "3.3", "4.2", "Exp"], width=6)
     format_combobox.set("4.2")
     format_combobox.pack(side="left", padx=5)
     format_combobox.bind("<<ComboboxSelected>>", handlers['on_format_change'])

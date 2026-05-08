@@ -99,6 +99,7 @@
   "app.err.invalid_gerber": "Invalid file format. Gerber RS-274X expected.",
   "app.err.parsing": "Parsing error: {error}",
   "app.err.parsing_gerber": "Gerber parsing error: {error}",
+  "app.err.gen_failed": "G-code generation failed:\n{error}",
   "app.err.no_tools": "File contains no tool data.",
   "app.err.no_slots": "File contains no slot data.",
   "app.err.no_outline_data": "File contains no outline data.",
@@ -277,6 +278,7 @@
   "tool_db.col.spindle_speed": "Spindle Speed (RPM)",
   "tool_db.col.plunge_feed": "Plunge Feed (mm/min)",
   "tool_db.col.retract_feed": "Retract Feed (mm/min)",
+  "tool_db.col.extra_depth": "Extra Depth (mm)",
   "tool_db.col.cutting_feed": "Cutting Feed (mm/min)",
   "tool_db.col.stepover": "Stepover (%)",
   "tool_db.btn.add": "Add",
@@ -305,6 +307,7 @@
   "tool_db.fld.spindle_speed": "Spindle Speed (RPM):",
   "tool_db.fld.plunge_feed": "Plunge Feed (mm/min):",
   "tool_db.fld.retract_feed": "Retract Feed (mm/min):",
+  "tool_db.fld.extra_depth": "Extra Depth (mm):",
   "tool_db.fld.cutting_feed": "Cutting Feed (mm/min):",
   "tool_db.fld.stepover": "Stepover (%):",
 

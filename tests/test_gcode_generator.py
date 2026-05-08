@@ -95,6 +95,73 @@ class TestBuildDrillingGcode:
         assert gcode is None
         assert any("видим" in e.lower() for e in errors)
 
+    def test_build_uses_extra_depth(self):
+        """Pro-режим: extra_depth из per-tool params добавляется к глубине.
+
+        global drill_z = -2.5, extra_depth = 1.0 → effective Z = -3.5.
+        Сверло без extra_depth (или с 0) сверлит на стандартной -2.5.
+        """
+        tools = {
+            '1': {'diameter': 1.0, 'holes': [(0, 0)], 'visible': True},
+            '2': {'diameter': 3.0, 'holes': [(5, 5)], 'visible': True},
+        }
+        params = {
+            'safe_z': 5.0, 'drill_z': -2.5, 'feed_rate': 100,
+            'rapid_rate': 500, 'park_z': 30,
+        }
+        # Для T2 задаём extra_depth=1.0 (как сверло 3 мм должно идти на 1 мм глубже).
+        # Для T1 — без extra_depth (поведение fallback на 0).
+        tool_params_dict = {
+            '1': {'spindle_speed': 10000, 'feed_rate': 100, 'rapid_rate': 500,
+                  'safe_z': 5.0, 'drill_z': -2.5, 'park_z': 30, 'extra_depth': 0.0},
+            '2': {'spindle_speed': 15000, 'feed_rate': 200, 'rapid_rate': 500,
+                  'safe_z': 5.0, 'drill_z': -2.5, 'park_z': 30, 'extra_depth': 1.0},
+        }
+        gcode, errors = _build_drilling_gcode(tools, "test.drl", params,
+                                              tool_params_dict=tool_params_dict)
+        assert errors == []
+
+        # Разбиваем по T-меткам инструментов (T1, T2 — здесь tool_num совпадает с
+        # номерами '1' и '2' из dict).
+        # Для T1 (extra_depth=0) ожидаем G01 Z-2.50.
+        # Для T2 (extra_depth=1.0) ожидаем G01 Z-3.50.
+        t1_pos = gcode.find("T1 ")
+        t2_pos = gcode.find("T2 ")
+        assert t1_pos >= 0 and t2_pos > t1_pos, "Обе T-метки должны быть в выводе"
+        t1_section = gcode[t1_pos:t2_pos]
+        t2_section = gcode[t2_pos:]
+
+        assert "G01 Z-2.50" in t1_section, (
+            f"T1 (extra_depth=0) должен сверлить на -2.50:\n{t1_section}"
+        )
+        assert "G01 Z-2.50" not in t2_section, (
+            f"T2 (extra_depth=1.0) НЕ должен использовать -2.50:\n{t2_section}"
+        )
+        assert "G01 Z-3.50" in t2_section, (
+            f"T2 (extra_depth=1.0) должен сверлить на -3.50:\n{t2_section}"
+        )
+
+    def test_build_extra_depth_zero_equals_global(self):
+        """extra_depth=0 (или отсутствует) — Z строго равен глобальному drill_z."""
+        tools = {
+            '1': {'diameter': 1.0, 'holes': [(0, 0)], 'visible': True},
+        }
+        params = {
+            'safe_z': 5.0, 'drill_z': -2.5, 'feed_rate': 100,
+            'rapid_rate': 500, 'park_z': 30,
+        }
+        # tool_params_dict без extra_depth — эквивалент legacy-вызова.
+        tool_params_dict = {
+            '1': {'spindle_speed': 10000, 'feed_rate': 100, 'rapid_rate': 500,
+                  'safe_z': 5.0, 'drill_z': -2.5, 'park_z': 30},
+        }
+        gcode, errors = _build_drilling_gcode(tools, "test.drl", params,
+                                              tool_params_dict=tool_params_dict)
+        assert errors == []
+        assert "G01 Z-2.50" in gcode
+        # Никаких других глубин в drilling-секции быть не должно.
+        assert "G01 Z-3.50" not in gcode
+
 
 class TestBuildMillingGcode:
     def test_build_valid(self):

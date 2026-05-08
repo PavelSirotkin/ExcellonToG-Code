@@ -194,6 +194,57 @@ class TestBuildOutlineSection:
         assert "Z-0.50" in pass3, "Проход 3 должен содержать подъём до z=-0.5 (tab level)"
 
 
+    def test_first_plunge_not_in_tab(self):
+        """Регрессия: первое погружение фрезы не должно происходить
+        внутри (или у края) перемычки.
+
+        Условия для wrap-around: при tab_width, сравнимом с длиной
+        стороны, диапазон последней перемычки переносится через начало
+        контура — points[0] попадает в tab. Без сдвига стартовой точки
+        фреза погружается на полную глубину прямо в перемычку и
+        срезает мост.
+        """
+        segments = [
+            make_line((0, 0), (100, 0)),
+            make_line((100, 0), (100, 50)),
+            make_line((100, 50), (0, 50)),
+            make_line((0, 50), (0, 0)),
+        ]
+        params = {'safe_z': 5.0, 'drill_z': -1.0, 'rapid_rate': 500}
+        outline_params = {
+            'tool_diameter': 3.0,
+            'depth_per_pass': 1.0,
+            'n_tabs': 4,
+            # При периметре ~312 центры tabs у середин сторон;
+            # tab_width=60 даёт диапазон последней перемычки с wrap-around
+            # через начало контура.
+            'tab_width': 60.0,
+            'tab_height': 0.5,
+            'direction': 'CCW',
+        }
+
+        buf = io.StringIO()
+        build_outline_section(buf, segments, "test.gbr", params, outline_params)
+        gcode = buf.getvalue()
+
+        # Берём проход 1 (он же единственный — drill_z=-1.0, depth_per_pass=1.0).
+        pass1 = gcode.split("; Pass 1/")[1]
+        assert "TAB BEGIN" in pass1, "Перемычки должны генерироваться"
+
+        # Между погружением (G01 Z-1.00) и первым TAB BEGIN должна быть хотя бы
+        # одна команда резания G01 X/Y — иначе мы плонжанулись прямо в tab.
+        plunge_match = re.search(r"G01\s+Z-1\.0+", pass1)
+        assert plunge_match, "Должно быть погружение на рабочую глубину"
+        after_plunge = pass1[plunge_match.end():]
+        first_tab_pos = after_plunge.find("TAB BEGIN")
+        assert first_tab_pos > 0, "TAB BEGIN должен идти после погружения"
+        before_first_tab = after_plunge[:first_tab_pos]
+        assert re.search(r"G01\s+X-?\d+\.\d+\s+Y-?\d+\.\d+", before_first_tab), (
+            f"Между погружением и первой перемычкой нет резания — "
+            f"значит плонж попал в tab:\n{before_first_tab}"
+        )
+
+
 class TestOutlineWithCutout:
     """Контур с вырезом: каждый подконтур фрезеруется отдельно,
     переход между ними — через safe Z, без рабочего движения над платой."""
@@ -227,8 +278,14 @@ class TestOutlineWithCutout:
         outline_params.update(outline_overrides)
         return params, outline_params
 
-    def test_outer_milled_before_inner(self):
-        """Внешний контур должен идти раньше выреза."""
+    def test_inner_milled_before_outer(self):
+        """Внутренние вырезы должны идти раньше внешнего контура.
+
+        Логика: пока плата держится массивом заготовки, вырезы режутся
+        максимально жёстко закреплённой деталью. Внешний контур (плата
+        отделяется от заготовки) фрезеруется последним; tabs удерживают
+        её на финальной операции.
+        """
         segments = self._outer_with_cutout()
         params, outline_params = self._params()
         buf = io.StringIO()
@@ -237,24 +294,23 @@ class TestOutlineWithCutout:
         outer_pos = gcode.find("outer contour")
         inner_pos = gcode.find("inner cutout")
         assert outer_pos != -1 and inner_pos != -1
-        assert outer_pos < inner_pos
+        assert inner_pos < outer_pos
 
     def test_safe_z_retract_between_subpaths(self):
         """Между подконтурами фреза должна выйти на safe_z, иначе
-        переезд пройдёт по платe на рабочей глубине."""
+        переезд пройдёт по плате на рабочей глубине."""
         segments = self._outer_with_cutout()
         params, outline_params = self._params()
         buf = io.StringIO()
         build_outline_section(buf, segments, "x.gbr", params, outline_params)
         gcode = buf.getvalue()
 
-        # Вырезаем участок между концом outer и началом inner
-        outer_marker = "outer contour"
-        inner_marker = "inner cutout"
-        outer_idx = gcode.find(outer_marker)
-        inner_idx = gcode.find(inner_marker)
-        assert outer_idx >= 0 and inner_idx > outer_idx
-        between = gcode[outer_idx:inner_idx]
+        # Порядок: внутренний вырез → внешний контур.
+        # Вырезаем участок между концом inner и началом outer.
+        inner_idx = gcode.find("inner cutout")
+        outer_idx = gcode.find("outer contour")
+        assert inner_idx >= 0 and outer_idx > inner_idx
+        between = gcode[inner_idx:outer_idx]
 
         # В переходе обязан быть подъём до safe_z (5.0)
         assert re.search(r"Z\s*5\.0+", between), (
@@ -274,8 +330,10 @@ class TestOutlineWithCutout:
         build_outline_section(buf, segments, "x.gbr", params, outline_params)
         gcode = buf.getvalue()
 
-        outer_section = gcode[gcode.find("outer contour"):gcode.find("inner cutout")]
-        inner_section = gcode[gcode.find("inner cutout"):]
+        # Порядок: inner cutout → outer contour. Inner-секция — между
+        # маркерами; outer-секция — от outer-маркера до конца.
+        inner_section = gcode[gcode.find("inner cutout"):gcode.find("outer contour")]
+        outer_section = gcode[gcode.find("outer contour"):]
         assert "TAB BEGIN" in outer_section
         assert "TAB BEGIN" not in inner_section, (
             f"На вырезе не должно быть tabs:\n{inner_section}"
@@ -292,7 +350,11 @@ class TestOutlineWithCutout:
         build_outline_section(buf, segments, "x.gbr", params, outline_params)
         gcode = buf.getvalue()
 
-        inner_section = gcode[gcode.find("inner cutout"):]
+        # Inner-секция: от маркера до начала outer-секции (порядок —
+        # inner перед outer). Если outer-маркера нет — до конца.
+        inner_start = gcode.find("inner cutout")
+        outer_start = gcode.find("outer contour", inner_start)
+        inner_section = gcode[inner_start:outer_start if outer_start != -1 else None]
         # Извлекаем X/Y координаты из inner-секции
         coords = re.findall(r"X(-?\d+\.\d+)\s+Y(-?\d+\.\d+)", inner_section)
         # Должны быть координаты в районе выреза, без выхода за [10..20]

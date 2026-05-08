@@ -30,11 +30,13 @@ class TestDetectCoordinateFormat:
         result = detect_coordinate_format("nonexistent_file.drl")
         assert result is None
 
-    def test_no_format_in_file(self):
-        # Создаём временный файл без формата
+    def test_explicit_decimal_in_body_returns_exp(self):
+        # G-code .tap содержит координаты вида "X1.000 Y2.000" — явный
+        # десятичный формат. detect_coordinate_format должен вернуть 'Exp',
+        # т.к. явная точка перебивает любые позиционные форматные подсказки.
         path = os.path.join(FIXTURES_DIR, 'test_gcode.tap')
         result = detect_coordinate_format(path)
-        assert result is None
+        assert result == "Exp"
 
 
 class TestIsExcellonFile:
@@ -218,6 +220,117 @@ class TestDetectZeroSuppression:
         f = tmp_path / "test.drl"
         f.write_text("M48\n; built with LZIP compression and TZERO test\nFORMAT,3.3\n%\n")
         assert detect_zero_suppression(str(f)) is None
+
+
+class TestExplicitDecimalFormat:
+    """Поддержка формата 'Exp' — явная десятичная точка в координатах
+    (характерно для KiCAD/Pcbnew).
+    """
+
+    def test_detect_exp_from_kicad_body(self, tmp_path):
+        """KiCAD-стиль: тело содержит X1.0Y59.0 → автодетект 'Exp'."""
+        content = (
+            "M48\n"
+            "; FORMAT={-:-/ absolute / metric / decimal}\n"
+            "FMAT,2\n"
+            "METRIC\n"
+            "T1C0.600\n"
+            "%\n"
+            "G90\n"
+            "G05\n"
+            "T1\n"
+            "X1.0Y59.0\n"
+            "X99.0Y1.0\n"
+            "M30\n"
+        )
+        f = tmp_path / "kicad.drl"
+        f.write_text(content)
+        assert detect_coordinate_format(str(f)) == "Exp"
+
+    def test_detect_exp_overrides_header_format(self, tmp_path):
+        """Если в заголовке есть FORMAT,3.3, но в теле явные десятичные —
+        автодетект всё равно возвращает 'Exp' (явное побеждает позиционное)."""
+        content = (
+            "M48\nMETRIC\nFORMAT,3.3\nT1C0.5\n%\n"
+            "T1\nX10.5Y20.25\nM30\n"
+        )
+        f = tmp_path / "mixed.drl"
+        f.write_text(content)
+        assert detect_coordinate_format(str(f)) == "Exp"
+
+    def test_detect_does_not_misfire_on_format_decimal_comment(self, tmp_path):
+        """Комментарий 'FORMAT={... decimal}' в заголовке не должен сам по себе
+        давать 'Exp' — нужны именно X/Y координаты с точкой в теле."""
+        content = (
+            "M48\n"
+            "; FORMAT={-:-/ absolute / metric / decimal}\n"
+            "FMAT,2\nMETRIC\nFORMAT,3.3\nT1C0.5\n%\n"
+            "T1\nX1500Y2500\nM30\n"
+        )
+        f = tmp_path / "no_explicit_body.drl"
+        f.write_text(content)
+        # Тело — целочисленное → должно сработать заголовочное правило 3.3
+        assert detect_coordinate_format(str(f)) == "3.3"
+
+    def test_parse_kicad_exp_file(self, tmp_path):
+        """Полный парс KiCAD-файла: координаты совпадают с записанными в файле."""
+        content = (
+            "M48\n"
+            "; FORMAT={-:-/ absolute / metric / decimal}\n"
+            "FMAT,2\nMETRIC\n"
+            "T1C0.600\n"
+            "%\nG90\nG05\nT1\n"
+            "X1.0Y59.0\n"
+            "X1.0Y1.0\n"
+            "X99.0Y59.0\n"
+            "X99.0Y1.0\n"
+            "M30\n"
+        )
+        f = tmp_path / "kicad_full.drl"
+        f.write_text(content)
+        tools = parse_excellon_file(str(f), coord_format="Exp")
+        assert len(tools) == 1
+        assert tools['1']['diameter'] == 0.6
+        # 4 отверстия с теми же координатами, что в файле
+        coords = set(tools['1']['holes'])
+        assert coords == {(1.0, 59.0), (1.0, 1.0), (99.0, 59.0), (99.0, 1.0)}
+
+    def test_parse_exp_negative_and_fractional(self, tmp_path):
+        content = (
+            "M48\nMETRIC\nT1C0.5\n%\nT1\n"
+            "X-12.345Y6.789\n"
+            "X+0.001Y-0.001\n"
+            "M30\n"
+        )
+        f = tmp_path / "neg.drl"
+        f.write_text(content)
+        tools = parse_excellon_file(str(f), coord_format="Exp")
+        coords = set(tools['1']['holes'])
+        assert coords == {(-12.345, 6.789), (0.001, -0.001)}
+
+    def test_parse_exp_slot_file(self, tmp_path):
+        content = (
+            "M48\nMETRIC\nT1C1.0\n%\n"
+            "T1\nG00X1.5Y2.5\nM15\nG01X3.5Y4.5\nM16\nM30\n"
+        )
+        f = tmp_path / "slot_exp.drl"
+        f.write_text(content)
+        tools = parse_slot_file(str(f), coord_format="Exp")
+        assert tools['1']['slots'] == [((1.5, 2.5), (3.5, 4.5))]
+
+    def test_decimal_in_integer_format_falls_back_to_literal(self, tmp_path):
+        """Если в файле смешаны целые и явные десятичные — _decode_coord
+        обрабатывает явные десятичные литерально независимо от coord_format.
+        Это даёт устойчивость к нестандартным комбинациям."""
+        content = (
+            "M48\nMETRIC\nFORMAT,3.3\nT1C0.5\n%\n"
+            "T1\nX1.0Y2.0\nM30\n"
+        )
+        f = tmp_path / "mixed.drl"
+        f.write_text(content)
+        # Даже с coord_format="3.3" явная точка читается как float
+        tools = parse_excellon_file(str(f), coord_format="3.3")
+        assert tools['1']['holes'] == [(1.0, 2.0)]
 
 
 class TestZeroSuppressionParsing:

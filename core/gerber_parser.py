@@ -314,8 +314,16 @@ def parse_gerber_outline(filename: str) -> Tuple[List[Dict], str, Tuple[float, f
     if not parser.segments:
         return [], parser.unit, (0, 0, 0, 0)
 
+    # Пост-обработка: сшивка несвязанных штрихов в замкнутые петли.
+    # Нужна для KiCad-стиля Edge.Cuts (контур задан набором отдельных
+    # D02→D01 штрихов в произвольном порядке, без G36-региона). Для
+    # уже корректно собранных подконтуров (Altium-стиль с G36) функция
+    # ничего не меняет.
+    from core.polygon_ops import stitch_subpaths
+    segments = stitch_subpaths(parser.segments)
+
     all_points = []
-    for seg in parser.segments:
+    for seg in segments:
         if seg['type'] == 'line':
             all_points.extend([seg['p1'], seg['p2']])
         elif seg['type'] == 'arc':
@@ -325,7 +333,7 @@ def parse_gerber_outline(filename: str) -> Tuple[List[Dict], str, Tuple[float, f
     ys = [p[1] for p in all_points]
     bbox = (min(xs), min(ys), max(xs), max(ys))
 
-    return parser.segments, parser.unit, bbox
+    return segments, parser.unit, bbox
 
 
 def is_gerber_file(filename: str) -> bool:

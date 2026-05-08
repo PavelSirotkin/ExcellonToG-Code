@@ -258,6 +258,16 @@ def generate_drilling_gcode():
             return
         _store_gcode_for_viz(gcode_text)
         show_result_dialog(filename)
+    except Exception as e:
+        # Перехват непредвиденных ошибок генератора G-code, чтобы они не
+        # пробивались в Tkinter event loop сырым traceback'ом. Полный stack
+        # уходит в лог через logger.exception, пользователю — локализованное
+        # сообщение с str(e).
+        logger.exception("G-code generation failed")
+        messagebox.showerror(
+            t("app.dlg.error"),
+            t("app.err.gen_failed", error=str(e))
+        )
     finally:
         # Разблокировка кнопок после завершения операции
         for btn in gcode_frame_buttons:
@@ -328,6 +338,16 @@ def generate_milling_gcode():
             return
         _store_gcode_for_viz(gcode_text)
         show_result_dialog(filename)
+    except Exception as e:
+        # Перехват непредвиденных ошибок генератора G-code, чтобы они не
+        # пробивались в Tkinter event loop сырым traceback'ом. Полный stack
+        # уходит в лог через logger.exception, пользователю — локализованное
+        # сообщение с str(e).
+        logger.exception("G-code generation failed")
+        messagebox.showerror(
+            t("app.dlg.error"),
+            t("app.err.gen_failed", error=str(e))
+        )
     finally:
         # Разблокировка кнопок после завершения операции
         for btn in gcode_frame_buttons:
@@ -452,6 +472,16 @@ def generate_combined_gcode():
             return
         _store_gcode_for_viz(gcode_text)
         show_result_dialog(filename)
+    except Exception as e:
+        # Перехват непредвиденных ошибок генератора G-code, чтобы они не
+        # пробивались в Tkinter event loop сырым traceback'ом. Полный stack
+        # уходит в лог через logger.exception, пользователю — локализованное
+        # сообщение с str(e).
+        logger.exception("G-code generation failed")
+        messagebox.showerror(
+            t("app.dlg.error"),
+            t("app.err.gen_failed", error=str(e))
+        )
     finally:
         # Разблокировка кнопок после завершения операции
         for btn in gcode_frame_buttons:
@@ -555,6 +585,16 @@ def generate_outline_gcode():
             return
         _store_gcode_for_viz(gcode_text)
         show_result_dialog(filename)
+    except Exception as e:
+        # Перехват непредвиденных ошибок генератора G-code, чтобы они не
+        # пробивались в Tkinter event loop сырым traceback'ом. Полный stack
+        # уходит в лог через logger.exception, пользователю — локализованное
+        # сообщение с str(e).
+        logger.exception("G-code generation failed")
+        messagebox.showerror(
+            t("app.dlg.error"),
+            t("app.err.gen_failed", error=str(e))
+        )
     finally:
         # Разблокировка кнопок после завершения операции
         for btn in gcode_frame_buttons:

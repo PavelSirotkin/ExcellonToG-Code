@@ -18,6 +18,7 @@ DRILL_FIELDS = [
     "spindle_speed",   # int — обороты шпинделя (RPM)
     "plunge_feed",     # float — скорость погружения Z (мм/мин)
     "retract_feed",    # float — скорость подъёма Z (мм/мин)
+    "extra_depth",     # float — доп. глубина (мм), прибавляется к |drill_z| при генерации
 ]
 
 ENDMILL_FIELDS = [
@@ -29,11 +30,12 @@ ENDMILL_FIELDS = [
 
 
 def _make_drill(diameter: float, spindle_speed: int = 0, plunge_feed: float = 0,
-                 retract_feed: float = 0) -> Dict[str, Any]:
+                 retract_feed: float = 0, extra_depth: float = 0.0) -> Dict[str, Any]:
     """Создать запись сверла с полями по умолчанию."""
     return {
         "diameter": diameter, "spindle_speed": spindle_speed,
         "plunge_feed": plunge_feed, "retract_feed": retract_feed,
+        "extra_depth": extra_depth,
     }
 
 
@@ -149,7 +151,8 @@ class ToolDatabase:
                 diameter=diameter,
                 spindle_speed=params.get("spindle_speed", 0),
                 plunge_feed=params.get("feed_rate", 0),
-                retract_feed=params.get("feed_rate", 0)
+                retract_feed=params.get("feed_rate", 0),
+                extra_depth=params.get("extra_depth", 0.0),
             ) is not None
         elif tool_type == "endmills":
             diameter = params.get("diameter", float(tool_id))

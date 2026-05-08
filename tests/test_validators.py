@@ -40,6 +40,13 @@ class TestValidateCoordinateFormat:
         assert validate_coordinate_format("1.1") is True
         assert validate_coordinate_format("9.9") is True
 
+    def test_explicit_format(self):
+        # "Exp" — координаты с явной десятичной точкой (KiCAD-стиль)
+        assert validate_coordinate_format("Exp") is True
+        # case-sensitive: "exp"/"EXP" не должны проходить
+        assert validate_coordinate_format("exp") is False
+        assert validate_coordinate_format("EXP") is False
+
 
 class TestValidateGcodeParams:
     def test_valid_params(self):

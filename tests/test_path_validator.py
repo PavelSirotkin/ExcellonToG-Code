@@ -31,36 +31,71 @@ class TestValidateSavePath:
         assert error_msg == ""
     
     def test_path_with_double_dots(self):
-        """Проверка пути с .. (path traversal)."""
+        """Компонент пути '..' — реальный traversal, отвергается."""
         filepath = "C:\\Users\\test\\..\\..\\system32\\file.tap"
         is_valid, error_msg = validate_save_path(filepath)
         assert is_valid is False
         assert "Suspicious pattern" in error_msg
         assert ".." in error_msg
-    
-    def test_path_with_tilde(self):
-        """Проверка пути с ~ (домашняя директория)."""
-        filepath = "~/documents/file.tap"
-        is_valid, error_msg = validate_save_path(filepath)
-        assert is_valid is False
-        assert "Suspicious pattern" in error_msg
-        assert "~" in error_msg
-    
-    def test_path_with_dollar_sign(self):
-        """Проверка пути с $ (переменная окружения)."""
-        filepath = "C:\\$TEMP\\file.tap"
-        is_valid, error_msg = validate_save_path(filepath)
-        assert is_valid is False
-        assert "Suspicious pattern" in error_msg
-        assert "$" in error_msg
-    
-    def test_path_with_percent(self):
-        """Проверка пути с % (переменная окружения Windows)."""
-        filepath = "C:\\%TEMP%\\file.tap"
-        is_valid, error_msg = validate_save_path(filepath)
-        assert is_valid is False
-        assert "Suspicious pattern" in error_msg
-        assert "%" in error_msg
+
+    def test_double_dots_inside_filename_passes(self):
+        """'..' как ПОДСТРОКА в имени файла (не отдельный компонент) — допустимо.
+
+        Раньше substring-фильтр блокировал имена вида `build_2..3.tap`.
+        H2: должны разрешаться, поскольку реальный traversal-вектор —
+        компонент, ТОЧНО равный '..'.
+        """
+        with tempfile.TemporaryDirectory() as tmpdir:
+            filepath = os.path.join(tmpdir, "build_2..3.tap")
+            is_valid, error_msg = validate_save_path(filepath)
+            assert is_valid is True, f"Unexpected rejection: {error_msg}"
+
+    def test_windows_short_name_with_tilde_passes(self):
+        """8.3 short-имя Windows (`PavelS~1`) — легитимный компонент, не блокируется.
+
+        H2: раньше суффикс `~1` в коротком имени отвергался substring-фильтром,
+        и пользователи с длинным/non-ASCII логином не могли сохранить G-code.
+        Симулируем коротким именем папки внутри tmpdir, чтобы родитель существовал.
+        """
+        with tempfile.TemporaryDirectory() as tmpdir:
+            short_dir = os.path.join(tmpdir, "PROGRA~1")
+            os.makedirs(short_dir)
+            filepath = os.path.join(short_dir, "out.tap")
+            is_valid, error_msg = validate_save_path(filepath)
+            assert is_valid is True, f"Unexpected rejection: {error_msg}"
+
+    def test_path_with_dollar_in_component_passes(self):
+        """'$' в компоненте пути ($Recycle.Bin / C$ share) — допустимо.
+
+        H2: Python не раскрывает '$VAR' сам, поэтому символ '$' в имени —
+        это просто символ, а не уязвимость. Раньше блокировался без причины.
+        """
+        with tempfile.TemporaryDirectory() as tmpdir:
+            sub = os.path.join(tmpdir, "$Recycle.Bin")
+            os.makedirs(sub)
+            filepath = os.path.join(sub, "out.tap")
+            is_valid, error_msg = validate_save_path(filepath)
+            assert is_valid is True, f"Unexpected rejection: {error_msg}"
+
+    def test_path_with_percent_in_component_passes(self):
+        """'%' в имени компонента — допустимо.
+
+        H2: %TEMP% передаётся в Python как литерал, не раскрывается.
+        Если пользователь даёт буквальный путь с '%', блокировка избыточна.
+        """
+        with tempfile.TemporaryDirectory() as tmpdir:
+            sub = os.path.join(tmpdir, "raw_%TEMP%_dir")
+            os.makedirs(sub)
+            filepath = os.path.join(sub, "out.tap")
+            is_valid, error_msg = validate_save_path(filepath)
+            assert is_valid is True, f"Unexpected rejection: {error_msg}"
+
+    def test_tilde_at_component_start_in_existing_dir_passes(self):
+        """Префикс '~' в имени компонента (vim-backup-style) — допустимо."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            filepath = os.path.join(tmpdir, "~backup.tap")
+            is_valid, error_msg = validate_save_path(filepath)
+            assert is_valid is True, f"Unexpected rejection: {error_msg}"
     
     def test_path_with_allowed_base_dirs(self):
         """Проверка пути с разрешёнными директориями (родитель существует)."""

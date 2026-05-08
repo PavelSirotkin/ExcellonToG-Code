@@ -25,18 +25,26 @@ def validate_save_path(filename: str, allowed_base_dirs: list = None) -> tuple[b
         return True, ""
     
     try:
-        # Проверка на подозрительные паттерны в исходном пути (до нормализации)
-        suspicious_patterns = ['..', '~', '$', '%']
-        # Нормализуем разделители для проверки
+        # Защита от path traversal: единственный реальный вектор — компонент пути,
+        # ТОЧНО равный "..", позволяющий подняться на уровень. Любые другие
+        # вхождения "..", а также символы '~', '$', '%' — НЕ являются угрозой
+        # для filesystem-операций save (Python не раскрывает их сам), но раньше
+        # отвергались общим substring-фильтром, что блокировало легитимные пути:
+        #   - 8.3 short names на Windows (PROGRA~1, PavelS~1, …)
+        #   - системные папки ($Recycle.Bin, доступ через C$ share)
+        #   - имена с переменными окружения, передаваемыми буквально (%TEMP%
+        #     в строке — Python не expand-ит, это просто подстрока в имени)
+        #   - имена файлов с двойными точками между версиями (build_2..3.tap)
+        # Дополнительная защита от выхода за разрешённые директории
+        # реализована ниже через allowed_base_dirs.
         normalized_filename = filename.replace('/', os.sep).replace('\\', os.sep)
         path_parts = normalized_filename.split(os.sep)
-        
+
         for part in path_parts:
-            for pattern in suspicious_patterns:
-                if pattern in part:
-                    msg = f"Suspicious pattern '{pattern}' detected in path"
-                    logger.warning(f"Path validation failed: {msg} - {filename}")
-                    return False, msg
+            if part == '..':
+                msg = "Suspicious pattern '..' detected in path"
+                logger.warning(f"Path validation failed: {msg} - {filename}")
+                return False, msg
         
         # Получить абсолютный путь
         abs_path = os.path.abspath(filename)

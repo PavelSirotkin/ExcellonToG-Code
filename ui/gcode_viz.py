@@ -27,6 +27,46 @@ def _viz_tool_color(tool_key, tool_color_map):
     return tool_color_map[tool_key]
 
 
+def _draw_slot_like(canvas, segments, vp_fn, sf, *,
+                    border_color, fill_color, oval_fallback):
+    """Отрисовать набор «слотоподобных» сегментов как двойную линию: внешний
+    бордер + внутренняя заливка.
+
+    Каждый элемент `segments` — кортеж `(sx, sy, ex, ey, diameter, color)`,
+    где `color` — per-tool цвет, посчитанный заранее.
+
+    border_color:
+      - None — для каждого сегмента берётся собственный per-tool `color`
+        (используется для слотов и outline-прорезей).
+      - строка цвета — фиксированный для всех сегментов (используется для
+        tab-перемычек, у которых семантический цвет — «остаток материала»).
+
+    fill_color: цвет «начинки» внутренней линии (фиксированный).
+
+    oval_fallback: True — слишком короткий сегмент (`length_px < 1`) рисуется
+    как oval (точечная прорезь); False — пропускается. Для tabs точечный
+    мост визуально бесполезен, поэтому fallback отключается.
+    """
+    for sx, sy, ex, ey, diam, col in segments:
+        d_px = max(2, diam * sf * 0.5)
+        ps = vp_fn(sx, sy, 0.0)
+        pe = vp_fn(ex, ey, 0.0)
+        length_px = math.hypot(pe[0] - ps[0], pe[1] - ps[1])
+        bd = border_color if border_color is not None else col
+        if length_px < 1:
+            if not oval_fallback:
+                continue
+            canvas.create_oval(ps[0] - d_px, ps[1] - d_px,
+                               ps[0] + d_px, ps[1] + d_px,
+                               fill=fill_color, outline=bd, width=1)
+            continue
+        lw = max(4, int(2 * d_px))
+        canvas.create_line(ps[0], ps[1], pe[0], pe[1],
+                           fill=bd, width=lw + 2, capstyle=tk.ROUND)
+        canvas.create_line(ps[0], ps[1], pe[0], pe[1],
+                           fill=fill_color, width=lw, capstyle=tk.ROUND)
+
+
 def redraw_viz(play_idx=None):
     """Перерисовка канваса в режиме 2.5D визуализации."""
     canvas = cfg.get_widget("canvas")
@@ -105,22 +145,22 @@ def redraw_viz(play_idx=None):
     for i, seg in enumerate(segs):
         if i >= end_idx:
             break
-        t = seg['type']
+        seg_type = seg['type']
         col = _viz_tool_color(seg['tool'], tool_color_map)
         p0 = vp(seg['x0'], seg['y0'], seg['z0'])
         p1 = vp(seg['x1'], seg['y1'], seg['z1'])
 
-        if t == 'rapid':
+        if seg_type == 'rapid':
             canvas.create_line(p0[0], p0[1], p1[0], p1[1],
                                 fill="#555577", width=1, dash=(4, 4))
             pending_slot_start = None
             pending_outline_start = None
-        elif t == 'drill_down':
+        elif seg_type == 'drill_down':
             canvas.create_line(p0[0], p0[1], p1[0], p1[1], fill=col, width=2)
             d_px = max(2, seg['diameter'] * sf * 0.5)
             pending_slot_start = (seg['x1'], seg['y1'], seg['diameter'], col, p1, d_px)
             pending_outline_start = (seg['x1'], seg['y1'], seg['diameter'], col)
-        elif t == 'drill_up':
+        elif seg_type == 'drill_up':
             canvas.create_line(p0[0], p0[1], p1[0], p1[1], fill="#888899", width=1)
             if pending_slot_start:
                 _sx, _sy, _diam, _scol, _sp1, _sd_px = pending_slot_start
@@ -129,7 +169,7 @@ def redraw_viz(play_idx=None):
                                     fill="#0D0D0D", outline=_scol, width=1)
                 pending_slot_start = None
             pending_outline_start = None
-        elif t == 'slot_h':
+        elif seg_type == 'slot_h':
             if pending_slot_start:
                 sx, sy, diam, scol, _p, _d = pending_slot_start
                 completed_slots.append((sx, sy, seg['x1'], seg['y1'], diam, scol))
@@ -139,64 +179,32 @@ def redraw_viz(play_idx=None):
                 canvas.create_line(p0[0], p0[1], p1[0], p1[1],
                                     fill=col, width=lw, capstyle=tk.ROUND)
             pending_outline_start = None
-        elif t == 'outline':
+        elif seg_type == 'outline':
             # Outline milling - собираем сегменты для отображения как прорезей
             completed_outlines.append((seg['x0'], seg['y0'], seg['x1'], seg['y1'], seg['diameter'], col))
             pending_outline_start = (seg['x1'], seg['y1'], seg['diameter'], col)
-        elif t == 'outline_tab':
+        elif seg_type == 'outline_tab':
             # Tab-участок — мост (материал внизу не прорезан), отрисовываем отдельно
             completed_tabs.append((seg['x0'], seg['y0'], seg['x1'], seg['y1'], seg['diameter'], col))
             pending_outline_start = (seg['x1'], seg['y1'], seg['diameter'], col)
 
-    # Овальные прорези (слоты)
-    for sx, sy, ex, ey, diam, col in completed_slots:
-        d_px = max(2, diam * sf * 0.5)
-        ps = vp(sx, sy, 0.0)
-        pe = vp(ex, ey, 0.0)
-        length_px = math.hypot(pe[0]-ps[0], pe[1]-ps[1])
-        if length_px < 1:
-            canvas.create_oval(ps[0]-d_px, ps[1]-d_px, ps[0]+d_px, ps[1]+d_px,
-                                fill="#0D0D0D", outline=col, width=1)
-            continue
-        lw = max(4, int(2 * d_px))
-        canvas.create_line(ps[0], ps[1], pe[0], pe[1],
-                            fill=col, width=lw+2, capstyle=tk.ROUND)
-        canvas.create_line(ps[0], ps[1], pe[0], pe[1],
-                            fill="#0D0D0D", width=lw, capstyle=tk.ROUND)
+    # Овальные прорези (слоты): per-tool бордер, чёрная заливка прорези.
+    _draw_slot_like(canvas, completed_slots, vp, sf,
+                    border_color=None, fill_color="#0D0D0D",
+                    oval_fallback=True)
 
-    # Прорези outline (финишная обрезка) - отображаются как слоты
-    for sx, sy, ex, ey, diam, col in completed_outlines:
-        d_px = max(2, diam * sf * 0.5)
-        ps = vp(sx, sy, 0.0)
-        pe = vp(ex, ey, 0.0)
-        length_px = math.hypot(pe[0]-ps[0], pe[1]-ps[1])
-        if length_px < 1:
-            canvas.create_oval(ps[0]-d_px, ps[1]-d_px, ps[0]+d_px, ps[1]+d_px,
-                                fill="#0D0D0D", outline=col, width=1)
-            continue
-        lw = max(4, int(2 * d_px))
-        canvas.create_line(ps[0], ps[1], pe[0], pe[1],
-                            fill=col, width=lw+2, capstyle=tk.ROUND)
-        canvas.create_line(ps[0], ps[1], pe[0], pe[1],
-                            fill="#0D0D0D", width=lw, capstyle=tk.ROUND)
+    # Прорези outline (финишная обрезка) — рисуются так же, как слоты.
+    _draw_slot_like(canvas, completed_outlines, vp, sf,
+                    border_color=None, fill_color="#0D0D0D",
+                    oval_fallback=True)
 
     # Перемычки (tabs) поверх outline — мост из неразрезанного материала.
-    # Рисуем ярко-оранжевым поверх чёрных прорезей, чтобы было видно, где плата
-    # ещё держится после обрезки.
-    for sx, sy, ex, ey, diam, col in completed_tabs:
-        d_px = max(2, diam * sf * 0.5)
-        ps = vp(sx, sy, 0.0)
-        pe = vp(ex, ey, 0.0)
-        length_px = math.hypot(pe[0]-ps[0], pe[1]-ps[1])
-        if length_px < 1:
-            continue
-        lw = max(4, int(2 * d_px))
-        # Контур (обводка tab)
-        canvas.create_line(ps[0], ps[1], pe[0], pe[1],
-                           fill="#8B4513", width=lw + 2, capstyle=tk.ROUND)
-        # Заливка цветом "остатка материала"
-        canvas.create_line(ps[0], ps[1], pe[0], pe[1],
-                           fill="#F39C12", width=lw, capstyle=tk.ROUND)
+    # Ярко-оранжевая заливка с тёмно-коричневой обводкой поверх чёрных прорезей,
+    # чтобы было видно, где плата ещё держится после обрезки. Точечные tabs
+    # (length_px < 1) визуально бесполезны и пропускаются — отсюда oval_fallback=False.
+    _draw_slot_like(canvas, completed_tabs, vp, sf,
+                    border_color="#8B4513", fill_color="#F39C12",
+                    oval_fallback=False)
 
     # --- Головка инструмента ---
     if end_idx > 0 and end_idx <= n:

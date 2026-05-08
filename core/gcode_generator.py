@@ -232,6 +232,43 @@ def _pick_outline_tool_num(*tool_dicts, default: int = 100) -> int:
     return max(max(used) + 1, default)
 
 
+def _emit_drilling_section(buf, current_tools, params, tool_params_dict=None):
+    """Записать в buf тело секции сверления (без header/footer и валидации).
+
+    Используется и одиночным `_build_drilling_gcode`, и `_build_combined_gcode`,
+    чтобы логика per-tool вывода была в одном месте и не расходилась.
+    Caller обязан проверить, что есть видимые отверстия и параметры валидны.
+    """
+    safe_z = params.get('safe_z', 5.0)
+    drill_z = params.get('drill_z', -2.5)
+    feed_rate = params.get('feed_rate', 100)
+    rapid_rate = params.get('rapid_rate', 500)
+    park_z = params.get('park_z', 30)
+
+    for tool, data in current_tools.items():
+        if not data['visible'] or not data['holes']:
+            continue
+        t_params = tool_params_dict.get(tool) if tool_params_dict else None
+        spindle = _get_spindle_speed(t_params)
+        # Погружение Z — из базы (plunge_feed) или глобальная feed_rate
+        eff_plunge = _get_feed_rate(t_params, 'feed_rate') or feed_rate
+        # Подъём Z — из базы (retract_feed) или глобальная rapid_rate
+        eff_retract = _get_feed_rate(t_params, 'rapid_rate') or rapid_rate
+        # Доп. глубина (per-tool, Pro-режим): положительное значение → сверло
+        # погружается на N мм глубже глобального drill_z. drill_z отрицательный,
+        # поэтому вычитаем: -2.5 - 1.0 = -3.5. Отсутствует / simple-режим → 0.
+        extra_depth = float(t_params.get('extra_depth', 0.0)) if t_params else 0.0
+        effective_drill_z = drill_z - extra_depth
+
+        write_tool_start(buf, tool, data['diameter'], len(data['holes']),
+                         "holes", safe_z, rapid_rate, spindle)
+        for x_mm, y_mm in data['holes']:
+            emit_rapid_xy(buf, x_mm, y_mm, rapid_rate)
+            emit_plunge_z(buf, effective_drill_z, eff_plunge)
+            emit_retract_z(buf, safe_z, eff_retract)
+        write_tool_parking(buf, park_z, rapid_rate)
+
+
 def _build_drilling_gcode(current_tools, current_filename, params, tool_params_dict=None):
     """Построение G-code для сверления.
 
@@ -261,9 +298,8 @@ def _build_drilling_gcode(current_tools, current_filename, params, tool_params_d
     if validation_errors:
         return None, validation_errors
 
-    visible_tools = [(t, d) for t, d in current_tools.items()
-                     if d['visible'] and d['holes']]
-    if not visible_tools:
+    has_visible = any(d['visible'] and d['holes'] for d in current_tools.values())
+    if not has_visible:
         errors.append(t("app.err.no_visible_holes"))
         return None, errors
 
@@ -274,25 +310,56 @@ def _build_drilling_gcode(current_tools, current_filename, params, tool_params_d
     buf.write("G21 ; Metric\n")
     buf.write("G90 ; Absolute coordinates\n\n")
 
-    for tool, data in visible_tools:
+    _emit_drilling_section(buf, current_tools, params, tool_params_dict)
+
+    buf.write("M30\n")
+    buf.write("; End program\n")
+    return buf.getvalue(), []
+
+
+def _emit_milling_section(buf, slot_tools, params, tool_params_dict=None):
+    """Записать в buf тело секции фрезеровки слотов (без header/footer и валидации).
+
+    Используется и одиночным `_build_milling_gcode`, и `_build_combined_gcode`.
+    Caller обязан проверить, что есть видимые слоты и параметры валидны.
+    """
+    safe_z = params.get('safe_z', 5.0)
+    drill_z = params.get('drill_z', -2.5)
+    feed_rate = params.get('feed_rate', 100)
+    mill_feed = params.get('mill_feed', 50)
+    rapid_rate = params.get('rapid_rate', 500)
+    park_z = params.get('park_z', 30)
+
+    for tool, data in slot_tools.items():
+        if not data['visible'] or not data['slots']:
+            continue
         t_params = tool_params_dict.get(tool) if tool_params_dict else None
         spindle = _get_spindle_speed(t_params)
         # Погружение Z — из базы (plunge_feed) или глобальная feed_rate
         eff_plunge = _get_feed_rate(t_params, 'feed_rate') or feed_rate
         # Подъём Z — из базы (retract_feed) или глобальная rapid_rate
         eff_retract = _get_feed_rate(t_params, 'rapid_rate') or rapid_rate
+        # Рез XY — из базы (cutting_feed) или глобальная mill_feed
+        eff_mill = _get_feed_rate(t_params, 'mill_feed') or mill_feed
 
-        write_tool_start(buf, tool, data['diameter'], len(data['holes']),
-                         "holes", safe_z, rapid_rate, spindle)
-        for x_mm, y_mm in data['holes']:
-            emit_rapid_xy(buf, x_mm, y_mm, rapid_rate)
-            emit_plunge_z(buf, drill_z, eff_plunge)
-            emit_retract_z(buf, safe_z, eff_retract)
+        tool_display_d = t_params["diameter"] if (t_params and t_params.get("multi_pass")) else data['diameter']
+        write_tool_start(buf, tool, tool_display_d, len(data['slots']),
+                         "slots", safe_z, rapid_rate, spindle)
+        for slot_idx, (start, end) in enumerate(data['slots']):
+            sx, sy = start
+            ex, ey = end
+            buf.write(f"; Slot {slot_idx + 1}\n")
+            if t_params and t_params.get("multi_pass"):
+                offsets = _calc_multipass_offsets(
+                    t_params["slot_width"], t_params["diameter"], t_params.get("stepover", 0))
+                _write_slot_passes(buf, sx, sy, ex, ey, offsets,
+                                   drill_z, safe_z, eff_plunge, eff_retract, eff_mill, rapid_rate)
+            else:
+                emit_rapid_xy(buf, sx, sy, rapid_rate)
+                emit_plunge_z(buf, drill_z, eff_plunge)
+                emit_mill_xy(buf, ex, ey, eff_mill)
+                emit_retract_z(buf, safe_z, eff_retract)
         write_tool_parking(buf, park_z, rapid_rate)
-
-    buf.write("M30\n")
-    buf.write("; End program\n")
-    return buf.getvalue(), []
 
 
 def _build_milling_gcode(slot_tools, slot_filename, params, tool_params_dict=None):
@@ -325,9 +392,8 @@ def _build_milling_gcode(slot_tools, slot_filename, params, tool_params_dict=Non
     if validation_errors:
         return None, validation_errors
 
-    visible_tools = [(t, d) for t, d in slot_tools.items()
-                     if d['visible'] and d['slots']]
-    if not visible_tools:
+    has_visible = any(d['visible'] and d['slots'] for d in slot_tools.values())
+    if not has_visible:
         errors.append(t("app.err.no_visible_slots"))
         return None, errors
 
@@ -339,34 +405,7 @@ def _build_milling_gcode(slot_tools, slot_filename, params, tool_params_dict=Non
     buf.write("G21 ; Metric\n")
     buf.write("G90 ; Absolute coordinates\n\n")
 
-    for tool, data in visible_tools:
-        t_params = tool_params_dict.get(tool) if tool_params_dict else None
-        spindle = _get_spindle_speed(t_params)
-        # Погружение Z — из базы (plunge_feed) или глобальная feed_rate
-        eff_plunge = _get_feed_rate(t_params, 'feed_rate') or feed_rate
-        # Подъём Z — из базы (retract_feed) или глобальная rapid_rate
-        eff_retract = _get_feed_rate(t_params, 'rapid_rate') or rapid_rate
-        # Рез XY — из базы (cutting_feed) или глобальная mill_feed
-        eff_mill = _get_feed_rate(t_params, 'mill_feed') or mill_feed
-
-        tool_display_d = t_params["diameter"] if (t_params and t_params.get("multi_pass")) else data['diameter']
-        write_tool_start(buf, tool, tool_display_d, len(data['slots']),
-                         "slots", safe_z, rapid_rate, spindle)
-        for slot_idx, (start, end) in enumerate(data['slots']):
-            sx, sy = start
-            ex, ey = end
-            buf.write(f"; Slot {slot_idx + 1}\n")
-            if t_params and t_params.get("multi_pass"):
-                offsets = _calc_multipass_offsets(
-                    t_params["slot_width"], t_params["diameter"], t_params.get("stepover", 0))
-                _write_slot_passes(buf, sx, sy, ex, ey, offsets,
-                                   drill_z, safe_z, eff_plunge, eff_retract, eff_mill, rapid_rate)
-            else:
-                emit_rapid_xy(buf, sx, sy, rapid_rate)
-                emit_plunge_z(buf, drill_z, eff_plunge)
-                emit_mill_xy(buf, ex, ey, eff_mill)
-                emit_retract_z(buf, safe_z, eff_retract)
-        write_tool_parking(buf, park_z, rapid_rate)
+    _emit_milling_section(buf, slot_tools, params, tool_params_dict)
 
     buf.write("M30\n")
     buf.write("; End program\n")
@@ -443,54 +482,14 @@ def _build_combined_gcode(current_tools, current_filename, slot_tools, slot_file
     # Сверление
     if current_tools and has_visible_drilling:
         buf.write("; ===== DRILLING SECTION =====\n\n")
-        drills_dict = tool_params_dict.get("drills", {}) if tool_params_dict else {}
-        for tool, data in current_tools.items():
-            if not data['visible'] or not data['holes']:
-                continue
-            t_params = drills_dict.get(tool)
-            spindle = _get_spindle_speed(t_params)
-            eff_plunge = _get_feed_rate(t_params, 'feed_rate') or feed_rate
-            eff_retract = _get_feed_rate(t_params, 'rapid_rate') or rapid_rate
-
-            write_tool_start(buf, tool, data['diameter'], len(data['holes']),
-                             "holes", safe_z, rapid_rate, spindle)
-            for x_mm, y_mm in data['holes']:
-                emit_rapid_xy(buf, x_mm, y_mm, rapid_rate)
-                emit_plunge_z(buf, drill_z, eff_plunge)
-                emit_retract_z(buf, safe_z, eff_retract)
-            write_tool_parking(buf, park_z, rapid_rate)
+        drills_dict = tool_params_dict.get("drills") if tool_params_dict else None
+        _emit_drilling_section(buf, current_tools, params, drills_dict)
 
     # Фрезеровка слотов
     if slot_tools and has_visible_milling:
         buf.write("\n; ===== SLOT MILLING SECTION =====\n\n")
-        endmills_dict = tool_params_dict.get("endmills", {}) if tool_params_dict else {}
-        for tool, data in slot_tools.items():
-            if not data['visible'] or not data['slots']:
-                continue
-            t_params = endmills_dict.get(tool)
-            spindle = _get_spindle_speed(t_params)
-            eff_plunge = _get_feed_rate(t_params, 'feed_rate') or feed_rate
-            eff_retract = _get_feed_rate(t_params, 'rapid_rate') or rapid_rate
-            eff_mill = _get_feed_rate(t_params, 'mill_feed') or mill_feed
-
-            tool_display_d = t_params["diameter"] if (t_params and t_params.get("multi_pass")) else data['diameter']
-            write_tool_start(buf, tool, tool_display_d, len(data['slots']),
-                             "slots", safe_z, rapid_rate, spindle)
-            for slot_idx, (start, end) in enumerate(data['slots']):
-                sx, sy = start
-                ex, ey = end
-                buf.write(f"; Slot {slot_idx + 1}\n")
-                if t_params and t_params.get("multi_pass"):
-                    offsets = _calc_multipass_offsets(
-                        t_params["slot_width"], t_params["diameter"], t_params.get("stepover", 0))
-                    _write_slot_passes(buf, sx, sy, ex, ey, offsets,
-                                       drill_z, safe_z, eff_plunge, eff_retract, eff_mill, rapid_rate)
-                else:
-                    emit_rapid_xy(buf, sx, sy, rapid_rate)
-                    emit_plunge_z(buf, drill_z, eff_plunge)
-                    emit_mill_xy(buf, ex, ey, eff_mill)
-                    emit_retract_z(buf, safe_z, eff_retract)
-            write_tool_parking(buf, park_z, rapid_rate)
+        endmills_dict = tool_params_dict.get("endmills") if tool_params_dict else None
+        _emit_milling_section(buf, slot_tools, params, endmills_dict)
 
     # Обрезка по контуру
     if board_outline and outline_params:

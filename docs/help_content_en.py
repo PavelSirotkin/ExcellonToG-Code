@@ -1210,8 +1210,13 @@ HELP_SECTIONS = {
             {"type": "title", "text": "Version and license"},
 
             {"type": "h2", "text": "Current version"},
-            {"type": "bullet", "text": "ExcellonToG-Code 5.4 (May 2026)"},
-            
+            {"type": "bullet", "text": "ExcellonToG-Code 5.5 (May 2026)"},
+
+            {"type": "h2", "text": "Key changes in v5.5"},
+            {"type": "bullet", "text": "🛠 Extra drilling depth (Pro) — per-tool depth override: a drill can plunge deeper than the global drill_z by a specified amount"},
+            {"type": "bullet", "text": "🐛 Fixed tab shaving on first plunge — outline cut now starts in the middle of the longest non-tab segment, the cutter no longer cuts through the bridge"},
+            {"type": "bullet", "text": "🔄 Changed outline cutting order — inner cutouts first, outer contour last (the board stays rigidly held by the stock during precision operations)"},
+
             {"type": "h2", "text": "Key changes in v5.4"},
             {"type": "bullet", "text": "✂️ Arbitrary shape contours — finishing cut now supports external contour and internal cutouts"},
             {"type": "bullet", "text": "🔍 Automatic contour type detection — program recognizes external and internal contours, applying offset outward or inward"},
@@ -1270,6 +1275,8 @@ HELP_SECTIONS = {
             {"type": "bullet", "text": "Tabs strictly at midpoints of sides (not at corners)"},
 
             {"type": "h2", "text": "History"},
+            {"type": "bullet", "text": "v5.5 — May 2026: Extra drilling depth (Pro), safe first plunge in outline cut, changed cutting order (inner cutouts first)"},
+            {"type": "bullet", "text": "v5.4 — May 2026: Arbitrary shape contours, automatic contour type detection, KiCad stroke stitching"},
             {"type": "bullet", "text": "v5.3 — May 2026: Exp format support, legend localization"},
             {"type": "bullet", "text": "v5.2 — May 2026: Critical parser fixes, LZ/TZ support, logging"},
             {"type": "bullet", "text": "v5.1 — May 2026: Architecture refactoring, memory leak fixes"},

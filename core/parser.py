@@ -9,38 +9,119 @@ import core.config as cfg
 logger = logging.getLogger(__name__)
 
 
-def detect_coordinate_format(filename):
-    """Автоопределение формата координат из заголовка Excellon файла.
-    Ищет слово 'format' (без учёта регистра) и извлекает формат вида N.N или N:N.
-    Возвращает строку формата (например '3.3') или None если не найден."""
+# Специальное значение coord_format: координаты в файле записаны с явной
+# десятичной точкой (например, "X1.0Y59.0") — характерно для KiCAD/Pcbnew.
+# В этом режиме параметры N.N и режим подавления нулей не применяются —
+# значение читается как литеральный float.
+EXPLICIT_FORMAT = "Exp"
+
+# Регэксп координаты тела файла. Захватывает как целочисленную форму
+# ("X10000", "X-1500"), так и явную десятичную ("X1.0", "X-12.345").
+_COORD_RE_X = re.compile(r'X([+-]?\d+(?:\.\d+)?)')
+_COORD_RE_Y = re.compile(r'Y([+-]?\d+(?:\.\d+)?)')
+
+# Регэксп для определения, что в строке тела присутствует явная
+# десятичная координата (используется для автодетекта формата Exp).
+_EXPLICIT_DECIMAL_RE = re.compile(r'[XY][+-]?\d+\.\d+')
+
+
+def _read_text(filename):
+    """Прочитать файл целиком с UTF-8 и фолбэком на latin-1.
+    При ошибке возвращает None (вызывающий должен реагировать).
+
+    «Мягкий» вариант для автодетекта (`detect_coordinate_format`,
+    `detect_zero_suppression`): отсутствие/недоступность файла на этапе
+    детекта — это не катастрофа, можно попробовать дефолты.
+    Для основного парсинга см. `_read_text_strict`."""
     try:
-        # Сначала пробуем UTF-8
         with open(filename, 'r', encoding='utf-8') as f:
-            for _ in range(20):
-                line = f.readline()
-                if not line:
-                    break
-                if re.search(r'format', line, re.IGNORECASE):
-                    m = re.search(r'(\d)[.:,](\d)', line)
-                    if m:
-                        return f"{m.group(1)}.{m.group(2)}"
+            return f.read()
     except UnicodeDecodeError:
-        # Если не получилось, пробуем latin-1
         logger.warning("UTF-8 decode failed for %s, trying latin-1", filename)
         try:
             with open(filename, 'r', encoding='latin-1') as f:
-                for _ in range(20):
-                    line = f.readline()
-                    if not line:
-                        break
-                    if re.search(r'format', line, re.IGNORECASE):
-                        m = re.search(r'(\d)[.:,](\d)', line)
-                        if m:
-                            return f"{m.group(1)}.{m.group(2)}"
+                return f.read()
         except (OSError, UnicodeDecodeError) as e:
-            logger.warning("detect_coordinate_format: cannot read %s: %s", filename, e)
+            logger.warning("_read_text: cannot read %s: %s", filename, e)
+            return None
     except (OSError, PermissionError, FileNotFoundError) as e:
-        logger.warning("detect_coordinate_format: cannot read %s: %s", filename, e)
+        logger.warning("_read_text: cannot read %s: %s", filename, e)
+        return None
+
+
+def _read_text_strict(filename):
+    """Прочитать файл целиком с UTF-8 и фолбэком на latin-1.
+    Всегда либо возвращает str, либо raise — без `None`-варианта.
+
+    Используется в `parse_excellon_file` и `parse_slot_file`: для основного
+    парсинга молчаливый `None` не годится, ошибка обязана дойти до UI с
+    конкретным локализованным сообщением. Сохраняет контракт исключений
+    одиночных парсеров до рефакторинга:
+      - `FileNotFoundError(f"Файл не найден: {filename}")`
+      - `PermissionError(f"Нет доступа к файлу {filename}")`
+      - `ValueError(f"Не удалось прочитать файл {filename}: проблема с кодировкой")`
+        — после неудачной попытки и UTF-8, и latin-1.
+      - `OSError(f"Ошибка чтения файла {filename}: {e}")` — прочие IO-сбои.
+    """
+    try:
+        with open(filename, 'r', encoding='utf-8') as f:
+            return f.read()
+    except UnicodeDecodeError:
+        logger.warning("UTF-8 decode failed for %s, trying latin-1", filename)
+        try:
+            with open(filename, 'r', encoding='latin-1') as f:
+                return f.read()
+        except UnicodeDecodeError as e:
+            logger.error("Failed to decode file %s with both UTF-8 and latin-1: %s", filename, e)
+            raise ValueError(f"Не удалось прочитать файл {filename}: проблема с кодировкой") from e
+    except PermissionError as e:
+        logger.error("Permission denied reading file %s: %s", filename, e)
+        raise PermissionError(f"Нет доступа к файлу {filename}") from e
+    except FileNotFoundError as e:
+        logger.error("File not found: %s", filename)
+        raise FileNotFoundError(f"Файл не найден: {filename}") from e
+    except OSError as e:
+        logger.error("OS error reading file %s: %s", filename, e)
+        raise OSError(f"Ошибка чтения файла {filename}: {e}") from e
+
+
+def detect_coordinate_format(filename):
+    """Автоопределение формата координат Excellon-файла.
+
+    Логика (в порядке приоритета):
+      1. Сканируем тело файла: если хотя бы одна строка содержит координату
+         с явной десятичной точкой (вида X1.0 или Y-12.345) — возвращаем
+         'Exp'. Это надёжный признак, т.к. явная точка перебивает любые
+         подразумеваемые форматные настройки.
+      2. Иначе ищем в заголовке слово 'format' и извлекаем формат N.N / N:N.
+
+    Возвращает строку формата ('Exp', '3.3', и т.п.) или None.
+    """
+    content = _read_text(filename)
+    if content is None:
+        return None
+
+    lines = content.splitlines()
+
+    # 1) Тело: явные десятичные координаты → "Exp".
+    # Пропускаем строки заголовка (комментарии, директивы), чтобы не
+    # реагировать на FORMAT-комментарий вроде "FORMAT={...decimal}".
+    for line in lines:
+        stripped = line.strip()
+        if not stripped or stripped.startswith(';') or stripped.startswith('('):
+            continue
+        # Координатные строки начинаются с X/Y/G — проверяем только их,
+        # чтобы не ложно срабатывать на T1C0.600 и т. п.
+        if stripped[0] in ('X', 'Y', 'G'):
+            if _EXPLICIT_DECIMAL_RE.search(stripped):
+                return EXPLICIT_FORMAT
+
+    # 2) Заголовок: формат N.N / N:N.
+    for line in lines[:30]:
+        if re.search(r'format', line, re.IGNORECASE):
+            m = re.search(r'(\d)[.:,](\d)', line)
+            if m:
+                return f"{m.group(1)}.{m.group(2)}"
     return None
 
 
@@ -96,15 +177,22 @@ def detect_zero_suppression(filename):
 def _decode_coord(digits_str: str, format_x: int, format_y: int, zero_mode: str) -> float:
     """Декодировать строку Excellon-координаты в миллиметры.
 
-    digits_str: исходные цифры с опциональным знаком, например "1500", "-15", "+001500".
+    digits_str: исходные цифры с опциональным знаком, например "1500", "-15", "+001500"
+                либо явный десятичный вид "1.0", "-12.345".
     format_x, format_y: длины целой и дробной частей (для "3.3" это 3 и 3).
     zero_mode: "LZ" (подавлены ведущие), "TZ" (подавлены конечные) или "NONE".
+
+    Если строка содержит десятичную точку — возвращаем её как литеральный float.
+    Это соответствует Excellon-практике: явная точка перебивает заданный
+    позиционный формат и режим подавления нулей.
 
     Для LZ и NONE int() корректно отбрасывает ведущие нули и деление на 10**format_y
     даёт правильный результат — старое поведение парсера. Для TZ необходимо
     дополнить строку справа нулями до полной ширины (format_x + format_y),
     чтобы сохранить позиционную величину цифр.
     """
+    if "." in digits_str:
+        return float(digits_str)
     sign = ""
     body = digits_str
     if body and body[0] in "+-":
@@ -165,21 +253,27 @@ def parse_excellon_file(filename, coord_format=None, zero_mode=None):
     tools = {}
     current_tool = None
 
-    # Парсинг формата координат с обработкой ошибок
-    try:
-        format_x, format_y = map(int, coord_format.split('.'))
-    except (ValueError, AttributeError) as e:
-        raise ValueError(
-            f"Неверный формат координат '{coord_format}'. "
-            f"Ожидается N.N (например, '3.3' или '4.2'). Подробности: {e}"
-        )
+    # Режим Exp — явная десятичная точка в координатах. Формат N.N и режим
+    # подавления нулей в этом случае не используются (см. _decode_coord).
+    if coord_format == EXPLICIT_FORMAT:
+        format_x, format_y = 0, 0
+    else:
+        # Парсинг формата координат с обработкой ошибок
+        try:
+            format_x, format_y = map(int, coord_format.split('.'))
+        except (ValueError, AttributeError) as e:
+            raise ValueError(
+                f"Неверный формат координат '{coord_format}'. "
+                f"Ожидается N.N (например, '3.3' или '4.2') или '{EXPLICIT_FORMAT}'. "
+                f"Подробности: {e}"
+            )
 
-    # Защита от нулевой дробной части
-    if format_y == 0:
-        raise ValueError(
-            f"Неверный формат координат '{coord_format}'. "
-            f"Дробная часть должна быть > 0 (например, '3.3', '4.2', но не '3.0')."
-        )
+        # Защита от нулевой дробной части
+        if format_y == 0:
+            raise ValueError(
+                f"Неверный формат координат '{coord_format}'. "
+                f"Дробная часть должна быть > 0 (например, '3.3', '4.2', но не '3.0')."
+            )
 
     # Определение режима подавления нулей
     if zero_mode is None:
@@ -193,29 +287,7 @@ def parse_excellon_file(filename, coord_format=None, zero_mode=None):
     last_x = None
     last_y = None
     
-    # Чтение файла с правильной обработкой кодировок
-    try:
-        # Сначала пробуем UTF-8
-        with open(filename, 'r', encoding='utf-8') as f:
-            content = f.read()
-    except UnicodeDecodeError:
-        # Если не получилось, пробуем latin-1
-        logger.warning("UTF-8 decode failed for %s, trying latin-1", filename)
-        try:
-            with open(filename, 'r', encoding='latin-1') as f:
-                content = f.read()
-        except UnicodeDecodeError as e:
-            logger.error("Failed to decode file %s with both UTF-8 and latin-1: %s", filename, e)
-            raise ValueError(f"Не удалось прочитать файл {filename}: проблема с кодировкой") from e
-    except PermissionError as e:
-        logger.error("Permission denied reading file %s: %s", filename, e)
-        raise PermissionError(f"Нет доступа к файлу {filename}") from e
-    except FileNotFoundError as e:
-        logger.error("File not found: %s", filename)
-        raise FileNotFoundError(f"Файл не найден: {filename}") from e
-    except OSError as e:
-        logger.error("OS error reading file %s: %s", filename, e)
-        raise OSError(f"Ошибка чтения файла {filename}: {e}") from e
+    content = _read_text_strict(filename)
     
     # Парсим содержимое построчно
     for line in content.splitlines():
@@ -250,8 +322,8 @@ def parse_excellon_file(filename, coord_format=None, zero_mode=None):
         # нестандартные T-строки вида "T02C1.6X1000Y1000", встречающиеся
         # у некоторых постпроцессоров, давали фантомное отверстие.
         elif current_tool and ('X' in line or 'Y' in line):
-            x_match = re.search(r'X([+-]?\d+)', line)
-            y_match = re.search(r'Y([+-]?\d+)', line)
+            x_match = _COORD_RE_X.search(line)
+            y_match = _COORD_RE_Y.search(line)
             if x_match:
                 last_x = _decode_coord(x_match.group(1), format_x, format_y, zero_mode)
             if y_match:
@@ -290,21 +362,26 @@ def parse_slot_file(filename, coord_format=None, zero_mode=None):
     tools = {}
     current_tool = None
 
-    # Парсинг формата координат с обработкой ошибок
-    try:
-        format_x, format_y = map(int, coord_format.split('.'))
-    except (ValueError, AttributeError) as e:
-        raise ValueError(
-            f"Неверный формат координат '{coord_format}'. "
-            f"Ожидается N.N (например, '3.3' или '4.2'). Подробности: {e}"
-        )
+    # Режим Exp — см. parse_excellon_file.
+    if coord_format == EXPLICIT_FORMAT:
+        format_x, format_y = 0, 0
+    else:
+        # Парсинг формата координат с обработкой ошибок
+        try:
+            format_x, format_y = map(int, coord_format.split('.'))
+        except (ValueError, AttributeError) as e:
+            raise ValueError(
+                f"Неверный формат координат '{coord_format}'. "
+                f"Ожидается N.N (например, '3.3' или '4.2') или '{EXPLICIT_FORMAT}'. "
+                f"Подробности: {e}"
+            )
 
-    # Защита от нулевой дробной части
-    if format_y == 0:
-        raise ValueError(
-            f"Неверный формат координат '{coord_format}'. "
-            f"Дробная часть должна быть > 0 (например, '3.3', '4.2', но не '3.0')."
-        )
+        # Защита от нулевой дробной части
+        if format_y == 0:
+            raise ValueError(
+                f"Неверный формат координат '{coord_format}'. "
+                f"Дробная часть должна быть > 0 (например, '3.3', '4.2', но не '3.0')."
+            )
 
     # Определение режима подавления нулей
     if zero_mode is None:
@@ -315,29 +392,7 @@ def parse_slot_file(filename, coord_format=None, zero_mode=None):
         )
     logger.info("Slot parse: %s, format=%s, zero_mode=%s", filename, coord_format, zero_mode)
     
-    # Чтение файла с правильной обработкой кодировок
-    try:
-        # Сначала пробуем UTF-8
-        with open(filename, 'r', encoding='utf-8') as f:
-            content = f.read()
-    except UnicodeDecodeError:
-        # Если не получилось, пробуем latin-1
-        logger.warning("UTF-8 decode failed for %s, trying latin-1", filename)
-        try:
-            with open(filename, 'r', encoding='latin-1') as f:
-                content = f.read()
-        except UnicodeDecodeError as e:
-            logger.error("Failed to decode file %s with both UTF-8 and latin-1: %s", filename, e)
-            raise ValueError(f"Не удалось прочитать файл {filename}: проблема с кодировкой") from e
-    except PermissionError as e:
-        logger.error("Permission denied reading file %s: %s", filename, e)
-        raise PermissionError(f"Нет доступа к файлу {filename}") from e
-    except FileNotFoundError as e:
-        logger.error("File not found: %s", filename)
-        raise FileNotFoundError(f"Файл не найден: {filename}") from e
-    except OSError as e:
-        logger.error("OS error reading file %s: %s", filename, e)
-        raise OSError(f"Ошибка чтения файла {filename}: {e}") from e
+    content = _read_text_strict(filename)
     
     lines = [l.strip() for l in content.splitlines()]
     # M4: ключи header_tools нормализуем через int(), чтобы устранить
@@ -379,8 +434,8 @@ def parse_slot_file(filename, coord_format=None, zero_mode=None):
             i += 1
             continue
         if current_tool and line.startswith('G00'):
-            x_match = re.search(r'X([+-]?\d+)', line)
-            y_match = re.search(r'Y([+-]?\d+)', line)
+            x_match = _COORD_RE_X.search(line)
+            y_match = _COORD_RE_Y.search(line)
             # H1: строго требуем обе координаты на G00. Старый код принимал
             # любую и подменял отсутствующую нулём, что давало слот в начале
             # координат вместо ожидаемого. Слот без полной начальной точки —
@@ -391,8 +446,8 @@ def parse_slot_file(filename, coord_format=None, zero_mode=None):
                 if i + 1 < len(lines) and lines[i + 1] == 'M15':
                     if i + 2 < len(lines) and lines[i + 2].startswith('G01'):
                         g01_line = lines[i + 2]
-                        g01_x_match = re.search(r'X([+-]?\d+)', g01_line)
-                        g01_y_match = re.search(r'Y([+-]?\d+)', g01_line)
+                        g01_x_match = _COORD_RE_X.search(g01_line)
+                        g01_y_match = _COORD_RE_Y.search(g01_line)
                         # G01 может опускать одну координату — модальное
                         # наследование от G00 это стандартное поведение Excellon.
                         g01_x = _decode_coord(g01_x_match.group(1), format_x, format_y, zero_mode) if g01_x_match else g00_x

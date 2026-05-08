@@ -118,6 +118,48 @@ class TestToolDatabase:
         result = self.db.update_drill(99.0, spindle_speed=100)
         assert result is None
 
+    # ---- extra_depth (Pro-режим: per-tool доп. глубина сверления) ----
+
+    def test_add_drill_extra_depth_stored(self):
+        result = self.db.add_drill(3.0, spindle_speed=15000, plunge_feed=200,
+                                   retract_feed=500, extra_depth=1.0)
+        assert result is not None
+        assert result["extra_depth"] == 1.0
+        # Сохранилось при поиске
+        assert self.db.find_drill(3.0)["extra_depth"] == 1.0
+
+    def test_add_drill_extra_depth_default_zero(self):
+        # Не передаём extra_depth — должно быть 0 (через цикл-дополнение DRILL_FIELDS)
+        result = self.db.add_drill(1.0, spindle_speed=10000)
+        assert result is not None
+        assert result["extra_depth"] == 0
+
+    def test_update_drill_extra_depth(self):
+        self.db.add_drill(2.0, spindle_speed=10000)
+        assert self.db.find_drill(2.0)["extra_depth"] == 0
+        self.db.update_drill(2.0, extra_depth=0.5)
+        assert self.db.find_drill(2.0)["extra_depth"] == 0.5
+
+    def test_set_tool_params_drills_forwards_extra_depth(self):
+        # Compat-обёртка set_tool_params должна пробрасывать extra_depth
+        # в add_drill — иначе поле молча теряется при использовании этого пути.
+        ok = self.db.set_tool_params("drills", "1.0", {
+            "diameter": 1.0, "spindle_speed": 10000, "feed_rate": 100,
+            "extra_depth": 0.7,
+        })
+        assert ok is True
+        assert self.db.find_drill(1.0)["extra_depth"] == 0.7
+
+    def test_legacy_drill_record_without_extra_depth(self):
+        # JSON старого формата (до introduction of extra_depth): поле отсутствует.
+        # Загрузка должна пройти; чтение через .get(...) даёт 0 как default.
+        legacy_json = '{"drills": {"1.0": {"diameter": 1.0, "spindle_speed": 10000, "plunge_feed": 100, "retract_feed": 500}}, "endmills": {}}'
+        assert self.db.import_json(legacy_json) is True
+        rec = self.db.find_drill(1.0)
+        assert rec is not None
+        # Запись в JSON без поля; .get(... ,0) даёт 0.
+        assert rec.get("extra_depth", 0) == 0
+
     def test_get_all_sorted(self):
         self.db.add_drill(3.0)
         self.db.add_drill(1.0)
@@ -207,6 +249,26 @@ class TestModeEngine:
         global_params = {"safe_z": 5.0, "drill_z": -2.5, "feed_rate": 100, "rapid_rate": 500, "park_z": 30}
         result = self.engine.get_drill_params(99.0, global_params)
         assert result is None
+
+    def test_pro_drill_params_includes_extra_depth(self):
+        # Pro-режим: extra_depth из карточки сверла должен попадать в
+        # возвращаемый словарь параметров (используется gcode_generator).
+        self.engine.mode = "pro"
+        self.engine.tool_db.add_drill(3.0, spindle_speed=15000, plunge_feed=200,
+                                      retract_feed=500, extra_depth=1.0)
+        global_params = {"safe_z": 5.0, "drill_z": -2.5, "feed_rate": 100, "rapid_rate": 500, "park_z": 30}
+        result = self.engine.get_drill_params(3.0, global_params)
+        assert result is not None
+        assert result["extra_depth"] == 1.0
+
+    def test_pro_drill_params_extra_depth_defaults_zero(self):
+        # Сверло в базе без явного extra_depth — get_drill_params возвращает 0.
+        self.engine.mode = "pro"
+        self.engine.tool_db.add_drill(1.0, spindle_speed=10000)
+        global_params = {"safe_z": 5.0, "drill_z": -2.5, "feed_rate": 100, "rapid_rate": 500, "park_z": 30}
+        result = self.engine.get_drill_params(1.0, global_params)
+        assert result is not None
+        assert result["extra_depth"] == 0.0
 
     def test_needs_tool_dialog_simple(self):
         assert self.engine.needs_tool_dialog(1.0, "drill") is False

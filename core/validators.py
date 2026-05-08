@@ -11,10 +11,13 @@ from typing import Dict, Any, List, Tuple
 # ==========================================================
 
 def validate_coordinate_format(format_str: str) -> bool:
-    """Проверка формата координат (например "3.3", "4.2", "2.4").
-    Формат: целая часть.дробная часть, обе > 0."""
+    """Проверка формата координат (например "3.3", "4.2", "2.4", "Exp").
+    Допустимы: N.N (обе части > 0) или специальное значение "Exp" —
+    координаты с явной десятичной точкой."""
     if not format_str:
         return False
+    if format_str == "Exp":
+        return True
     match = re.match(r'^(\d+)\.(\d+)$', format_str)
     if not match:
         return False

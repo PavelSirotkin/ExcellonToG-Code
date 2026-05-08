@@ -238,3 +238,41 @@ M02*
         assert len(subpaths) == 2
 
         assert check_contour_closed(segments) is True
+
+    def test_real_kicad_periphery_board(self):
+        """KiCad-файл Edge.Cuts со штриховым описанием контура +
+        внутренним круглым вырезом. После сшивки должны получиться
+        2 замкнутых подконтура: 1 outer + 1 inner."""
+        sample = os.path.join(
+            os.path.dirname(__file__), '..', 'Samples',
+            'simplified_periphery_board-Edge_Cuts.gbr')
+        if not os.path.exists(sample):
+            pytest.skip("simplified_periphery_board-Edge_Cuts.gbr отсутствует")
+        from core.polygon_ops import split_subpaths, classify_subpaths
+
+        segments, unit, bbox = parse_gerber_outline(sample)
+        assert unit == "mm"
+
+        subpaths = split_subpaths(segments)
+        # До сшивки было бы много подконтуров по 1 сегменту;
+        # после сшивки — ровно 2 петли (внешний + круглый вырез).
+        assert len(subpaths) == 2, (
+            f"ожидалось 2 петли после сшивки, получено {len(subpaths)}")
+
+        # Обе петли замкнуты
+        assert check_contour_closed(segments) is True
+
+        # Классификация: 1 outer + 1 inner
+        cls = classify_subpaths(segments)
+        outer = [c for c in cls if c['is_outer']]
+        inner = [c for c in cls if not c['is_outer']]
+        assert len(outer) == 1, f"должен быть 1 outer, получено {len(outer)}"
+        assert len(inner) == 1, f"должен быть 1 inner, получено {len(inner)}"
+        # Inner — круглый вырез ⌀22 мм с центром (0, -18) — задан
+        # двумя CW-полуокружностями I=±11, J=0 при формате X4.6.
+        # → bbox внутреннего ~ x∈[-11,11], y∈[-29,-7].
+        inner_polygon = inner[0]['polygon']
+        ixs = [p[0] for p in inner_polygon]
+        iys = [p[1] for p in inner_polygon]
+        assert -11.5 <= min(ixs) and max(ixs) <= 11.5
+        assert -29.5 <= min(iys) and max(iys) <= -6.5

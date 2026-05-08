@@ -5,9 +5,12 @@ __pycache__/
 *$py.class
 *.so
 *.egg-info/
-# Dist/build (except release)
+
+# Dist/build artifacts — никогда не коммитим, релизы публикуем через
+# GitHub Releases (а не как файлы в git). Раньше здесь стояло !dist/*.*,
+# что инвертировало исключение и приглашало добавить exe (~12 МБ) в репо.
 build/
-!dist/*.*
+dist/
 
 # Virtual environments
 venv/
@@ -31,6 +34,13 @@ Thumbs.db
 CHANGES.md
 RELEASE_NOTES.md
 AUDIT_REPORT.md
+
+# Локальные настройки пользователя (язык/тема). Файл создаётся
+# приложением при первом запуске; коммитить личные предпочтения
+# в репо не нужно — это вызывает merge-конфликты у каждого
+# разработчика. Если ты уже добавил его в индекс ранее, выполни
+# вручную:  git rm --cached app_settings.json
+app_settings.json
 
 # Generated files (keep templates, ignore runtime data)
 !tool_base.json

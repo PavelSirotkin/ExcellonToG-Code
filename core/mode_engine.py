@@ -77,6 +77,9 @@ class ModeEngine:
             "safe_z": global_params.get("safe_z", 5.0),
             "drill_z": global_params.get("drill_z", -2.5),
             "park_z": global_params.get("park_z", 30),
+            # Доп. глубина: положительное значение → drill сверлит на N мм глубже
+            # глобального drill_z. Отсутствует в legacy-записях → 0.0.
+            "extra_depth": float(tool.get("extra_depth", 0.0)),
         }
 
     def get_endmill_params(self, diameter: float,
