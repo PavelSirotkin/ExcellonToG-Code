@@ -238,7 +238,7 @@ def generate_drilling_gcode():
             return
         filename = filedialog.asksaveasfilename(
             defaultextension=".tap",
-            filetypes=[(t("app.filetype.tap"), "*.tap"), (t("app.filetype.gcode"), "*.gcode;*.nc;*.ngc"),
+            filetypes=[(t("app.filetype.tap"), "*.tap"), (t("app.filetype.gcode"), ("*.gcode", "*.nc", "*.ngc")),
                        (t("app.filetype.all"), "*.*")],
             title=t("app.dlg.save_drilling.title")
         )
@@ -318,7 +318,7 @@ def generate_milling_gcode():
             return
         filename = filedialog.asksaveasfilename(
             defaultextension=".tap",
-            filetypes=[(t("app.filetype.tap"), "*.tap"), (t("app.filetype.gcode"), "*.gcode;*.nc;*.ngc"),
+            filetypes=[(t("app.filetype.tap"), "*.tap"), (t("app.filetype.gcode"), ("*.gcode", "*.nc", "*.ngc")),
                        (t("app.filetype.all"), "*.*")],
             title=t("app.dlg.save_milling.title")
         )
@@ -452,7 +452,7 @@ def generate_combined_gcode():
             return
         filename = filedialog.asksaveasfilename(
             defaultextension=".tap",
-            filetypes=[(t("app.filetype.tap"), "*.tap"), (t("app.filetype.gcode"), "*.gcode;*.nc;*.ngc"),
+            filetypes=[(t("app.filetype.tap"), "*.tap"), (t("app.filetype.gcode"), ("*.gcode", "*.nc", "*.ngc")),
                        (t("app.filetype.all"), "*.*")],
             title=t("app.dlg.save_combined.title")
         )
@@ -565,7 +565,7 @@ def generate_outline_gcode():
             return
         filename = filedialog.asksaveasfilename(
             defaultextension=".tap",
-            filetypes=[(t("app.filetype.tap"), "*.tap"), (t("app.filetype.gcode"), "*.gcode;*.nc;*.ngc"),
+            filetypes=[(t("app.filetype.tap"), "*.tap"), (t("app.filetype.gcode"), ("*.gcode", "*.nc", "*.ngc")),
                        (t("app.filetype.all"), "*.*")],
             title=t("app.dlg.save_outline.title")
         )

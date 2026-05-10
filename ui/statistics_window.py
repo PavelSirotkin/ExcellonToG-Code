@@ -20,8 +20,8 @@ class StatisticsWindow:
         self.window = tk.Toplevel(parent)
         self.window.title(t("stats.title"))
         self.window.geometry("500x700")
-        self.window.resizable(True, True)
-        self.window.minsize(500, 500)
+        self.window.resizable(False, True)
+        self.window.minsize(500, 700)
         self.window.transient(parent)
         self.window.grab_set()
         
