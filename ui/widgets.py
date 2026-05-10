@@ -49,7 +49,7 @@ def choose_file():
     global _last_dir
     filename = filedialog.askopenfilename(
         initialdir=_last_dir or None,
-        filetypes=[(t("app.filetype.excellon"), "*.txt;*.drl"), (t("app.filetype.all"), "*.*")]
+        filetypes=[(t("app.filetype.excellon"), ("*.txt", "*.drl")), (t("app.filetype.all"), "*.*")]
     )
     if not filename:
         return
@@ -86,7 +86,7 @@ def choose_slot_file():
     global _last_dir
     filename = filedialog.askopenfilename(
         initialdir=_last_dir or None,
-        filetypes=[(t("app.filetype.slot"), "*.txt;*.drl"), (t("app.filetype.all"), "*.*")]
+        filetypes=[(t("app.filetype.slot"), ("*.txt", "*.drl")), (t("app.filetype.all"), "*.*")]
     )
     if not filename:
         return
@@ -158,7 +158,7 @@ def choose_outline_file():
     global _last_dir
     filename = filedialog.askopenfilename(
         initialdir=_last_dir or None,
-        filetypes=[(t("app.filetype.gerber"), "*.gbr;*.gko;*.gm1;*.txt"), (t("app.filetype.all"), "*.*")]
+        filetypes=[(t("app.filetype.gerber"), ("*.gbr", "*.gko", "*.gm1", "*.txt")), (t("app.filetype.all"), "*.*")]
     )
     if not filename:
         return
