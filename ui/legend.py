@@ -87,20 +87,27 @@ def bind_mousewheel_to_children(widget):
     
     # Используем weak reference для canvas
     canvas_ref = weakref.ref(legend_canvas)
-    
+
+    def _needs_scroll(canvas):
+        """True, если содержимое не помещается целиком в видимую область.
+        canvas.yview() возвращает (top_fraction, bottom_fraction); при полностью
+        видимом контенте это (0.0, 1.0) — прокручивать нечего."""
+        first, last = canvas.yview()
+        return not (first <= 0.0 and last >= 1.0)
+
     def on_mousewheel(event):
         canvas = canvas_ref()
-        if canvas:
+        if canvas and _needs_scroll(canvas):
             canvas.yview_scroll(int(-1 * (event.delta / 120)), "units")
-    
+
     def on_button4(event):
         canvas = canvas_ref()
-        if canvas:
+        if canvas and _needs_scroll(canvas):
             canvas.yview_scroll(-1, "units")
-    
+
     def on_button5(event):
         canvas = canvas_ref()
-        if canvas:
+        if canvas and _needs_scroll(canvas):
             canvas.yview_scroll(1, "units")
     
     widget.bind("<MouseWheel>", on_mousewheel)

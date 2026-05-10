@@ -314,15 +314,25 @@ def enter_viz_mode():
     canvas.bind("<ButtonPress-1>", on_viz_drag_start)
     canvas.bind("<B1-Motion>", on_viz_drag)
     canvas.bind("<MouseWheel>", on_viz_mousewheel)
-    canvas.bind("<Button-4>",
-                lambda e: on_viz_mousewheel(
-                    type('Event', (), {'delta': 120, 'x': e.x, 'y': e.y})()))
-    canvas.bind("<Button-5>",
-                lambda e: on_viz_mousewheel(
-                    type('Event', (), {'delta': -120, 'x': e.x, 'y': e.y})()))
+    # Linux: <Button-4>/<Button-5> вместо <MouseWheel>; .delta отсутствует —
+    # проставляем вручную и переиспользуем сам event (у него уже есть x/y).
+    canvas.bind("<Button-4>", _on_viz_wheel_up)
+    canvas.bind("<Button-5>", _on_viz_wheel_down)
 
     redraw_viz(n)
     cfg.get_widget("status_label").config(text=t("viz.status.mode", n=n))
+
+
+def _on_viz_wheel_up(event):
+    """Linux: <Button-4> = прокрутка вверх в режиме визуализации."""
+    event.delta = 120
+    on_viz_mousewheel(event)
+
+
+def _on_viz_wheel_down(event):
+    """Linux: <Button-5> = прокрутка вниз в режиме визуализации."""
+    event.delta = -120
+    on_viz_mousewheel(event)
 
 
 def on_viz_mousewheel(event):

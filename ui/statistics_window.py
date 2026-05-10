@@ -57,13 +57,22 @@ class StatisticsWindow:
         canvas.pack(side="left", fill="both", expand=True, padx=10, pady=10)
         scrollbar.pack(side="right", fill="y", pady=10, padx=(0, 10))
         
-        # Прокрутка колесом мыши
+        # Прокрутка колесом мыши.
+        # Windows/macOS: <MouseWheel> с event.delta. Linux: <Button-4> (вверх) /
+        # <Button-5> (вниз), у которых нет .delta — различаем по event.num.
         def _on_mousewheel(event):
-            canvas.yview_scroll(int(-1 * (event.delta / 120)), "units")
-        
+            if event.num == 4:
+                canvas.yview_scroll(-1, "units")
+            elif event.num == 5:
+                canvas.yview_scroll(1, "units")
+            else:
+                canvas.yview_scroll(int(-1 * (event.delta / 120)), "units")
+
         # Биндим прокрутку на окно статистики (не на весь application root)
         # Это работает для всех виджетов внутри окна
         self.window.bind("<MouseWheel>", _on_mousewheel)
+        self.window.bind("<Button-4>", _on_mousewheel)
+        self.window.bind("<Button-5>", _on_mousewheel)
         self.window.protocol("WM_DELETE_WINDOW", self.window.destroy)
         
         # Центрирование окна
