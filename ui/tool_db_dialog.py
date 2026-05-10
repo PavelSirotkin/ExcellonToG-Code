@@ -235,7 +235,10 @@ def show_tool_db_dialog(parent, tool_db: ToolDatabase):
             ))
 
     def _export_json():
+        # parent=dlg критичен на Linux: без него file-dialog появляется за
+        # модальным окном базы инструментов и пользователь его не видит.
         filename = filedialog.asksaveasfilename(
+            parent=dlg,
             defaultextension=".json",
             filetypes=[(t("app.filetype.json"), "*.json"), (t("app.filetype.all"), "*.*")],
             title=t("tool_db.dlg.export_title")
@@ -244,16 +247,17 @@ def show_tool_db_dialog(parent, tool_db: ToolDatabase):
             # Проверка безопасности пути
             is_valid, error_msg = validate_save_path(filename)
             if not is_valid:
-                messagebox.showerror(t("app.dlg.error"), 
-                                   t("app.err.invalid_path", error=error_msg))
+                messagebox.showerror(t("app.dlg.error"),
+                                   t("app.err.invalid_path", error=error_msg), parent=dlg)
                 return
             if tool_db.save(filename):
-                messagebox.showinfo(t("tool_db.dlg.export_ok.title"), t("tool_db.dlg.export_ok.msg"))
+                messagebox.showinfo(t("tool_db.dlg.export_ok.title"), t("tool_db.dlg.export_ok.msg"), parent=dlg)
             else:
-                messagebox.showerror(t("app.dlg.error"), t("tool_db.dlg.export_err"))
+                messagebox.showerror(t("app.dlg.error"), t("tool_db.dlg.export_err"), parent=dlg)
 
     def _import_json():
         filename = filedialog.askopenfilename(
+            parent=dlg,
             filetypes=[(t("app.filetype.json"), "*.json"), (t("app.filetype.all"), "*.*")],
             title=t("tool_db.dlg.import_title")
         )
@@ -261,9 +265,9 @@ def show_tool_db_dialog(parent, tool_db: ToolDatabase):
             if tool_db.load(filename):
                 _populate_drills()
                 _populate_endmills()
-                messagebox.showinfo(t("tool_db.dlg.import_ok.title"), t("tool_db.dlg.import_ok.msg"))
+                messagebox.showinfo(t("tool_db.dlg.import_ok.title"), t("tool_db.dlg.import_ok.msg"), parent=dlg)
             else:
-                messagebox.showerror(t("app.dlg.error"), t("tool_db.dlg.import_err"))
+                messagebox.showerror(t("app.dlg.error"), t("tool_db.dlg.import_err"), parent=dlg)
 
     btn_export = tk.Button(btn_frame, text=t("tool_db.btn.export"), command=_export_json)
     cfg.register_themed_widget(btn_export, bg="btn_bg", fg="btn_fg")
@@ -545,22 +549,26 @@ def _add_drill(tool_db, tree):
 
 
 def _edit_drill_selected(tool_db, tree):
+    top = tree.winfo_toplevel()
     sel = tree.selection()
     if not sel:
-        messagebox.showwarning(t("app.dlg.warning"), t("tool_db.dlg.select_drill"))
+        messagebox.showwarning(t("app.dlg.warning"), t("tool_db.dlg.select_drill"), parent=top)
         return
     vals = tree.item(sel[0])["values"]
     diameter = float(vals[0])
-    _edit_drill(tool_db, diameter, tree, dlg_parent=tree.winfo_toplevel())
+    _edit_drill(tool_db, diameter, tree, dlg_parent=top)
 
 
 def _delete_drill_selected(tool_db, tree):
     sel = tree.selection()
     if not sel:
         return
+    top = tree.winfo_toplevel()
     vals = tree.item(sel[0])["values"]
     diameter = float(vals[0])
-    if messagebox.askyesno(t("app.dlg.confirm_delete"), t("tool_db.dlg.confirm_delete_drill", diameter=diameter)):
+    if messagebox.askyesno(t("app.dlg.confirm_delete"),
+                            t("tool_db.dlg.confirm_delete_drill", diameter=diameter),
+                            parent=top):
         tool_db.delete_drill(diameter)
         _populate_tree_drills(tree, tool_db)
 
@@ -570,21 +578,25 @@ def _add_endmill(tool_db, tree):
 
 
 def _edit_endmill_selected(tool_db, tree):
+    top = tree.winfo_toplevel()
     sel = tree.selection()
     if not sel:
-        messagebox.showwarning(t("app.dlg.warning"), t("tool_db.dlg.select_endmill"))
+        messagebox.showwarning(t("app.dlg.warning"), t("tool_db.dlg.select_endmill"), parent=top)
         return
     vals = tree.item(sel[0])["values"]
     diameter = float(vals[0])
-    _edit_endmill(tool_db, diameter, tree, dlg_parent=tree.winfo_toplevel())
+    _edit_endmill(tool_db, diameter, tree, dlg_parent=top)
 
 
 def _delete_endmill_selected(tool_db, tree):
     sel = tree.selection()
     if not sel:
         return
+    top = tree.winfo_toplevel()
     vals = tree.item(sel[0])["values"]
     diameter = float(vals[0])
-    if messagebox.askyesno(t("app.dlg.confirm_delete"), t("tool_db.dlg.confirm_delete_endmill", diameter=diameter)):
+    if messagebox.askyesno(t("app.dlg.confirm_delete"),
+                            t("tool_db.dlg.confirm_delete_endmill", diameter=diameter),
+                            parent=top):
         tool_db.delete_endmill(diameter)
         _populate_tree_endmills(tree, tool_db)

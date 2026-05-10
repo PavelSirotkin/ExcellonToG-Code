@@ -282,6 +282,30 @@ def _viz_slider_set(val):
     cfg.get_widget("viz_slider").set(val)
 
 
+def _viz_autofit():
+    """Вписать траекторию G-code в 85% рабочей области.
+    Обновляет cfg.viz_sf / cfg.viz_ox / cfg.viz_oy. Возвращает True при успехе."""
+    segs = cfg.viz_gcode_lines
+    if not segs:
+        return False
+    xs = [s['x0'] for s in segs] + [s['x1'] for s in segs]
+    ys = [s['y0'] for s in segs] + [s['y1'] for s in segs]
+    bx0, bx1 = min(xs) - 3, max(xs) + 3
+    by0, by1 = min(ys) - 3, max(ys) + 3
+    bw = max(bx1 - bx0, 1)
+    bh = max(by1 - by0, 1)
+    cfg.viz_sf = min(cfg.WORKAREA_WIDTH * 0.85 / bw, cfg.WORKAREA_HEIGHT * 0.85 / bh)
+    cfg.viz_ox = (bx0 + bx1) / 2
+    cfg.viz_oy = (by0 + by1) / 2
+    return True
+
+
+def on_viz_double_click(event):
+    """Двойной клик ЛКМ в viz-режиме — сброс масштаба к автозуму."""
+    if _viz_autofit():
+        redraw_viz(cfg.viz_play_index)
+
+
 def enter_viz_mode():
     """Вход в режим 2.5D визуализации."""
     cfg.viz_mode = True
@@ -290,17 +314,7 @@ def enter_viz_mode():
     cfg.get_widget("viz_btn_play").config(text=t("viz.btn.play"))
 
     # Автомасштаб — вписать плату в 85% рабочей области
-    segs = cfg.viz_gcode_lines
-    if segs:
-        xs = [s['x0'] for s in segs] + [s['x1'] for s in segs]
-        ys = [s['y0'] for s in segs] + [s['y1'] for s in segs]
-        bx0, bx1 = min(xs) - 3, max(xs) + 3
-        by0, by1 = min(ys) - 3, max(ys) + 3
-        bw = max(bx1 - bx0, 1)
-        bh = max(by1 - by0, 1)
-        cfg.viz_sf = min(cfg.WORKAREA_WIDTH * 0.85 / bw, cfg.WORKAREA_HEIGHT * 0.85 / bh)
-        cfg.viz_ox = (bx0 + bx1) / 2
-        cfg.viz_oy = (by0 + by1) / 2
+    _viz_autofit()
 
     n = len(cfg.viz_gcode_lines)
     cfg.get_widget("viz_slider").config(to=max(1, n))
@@ -313,6 +327,7 @@ def enter_viz_mode():
     canvas = cfg.get_widget("canvas")
     canvas.bind("<ButtonPress-1>", on_viz_drag_start)
     canvas.bind("<B1-Motion>", on_viz_drag)
+    canvas.bind("<Double-Button-1>", on_viz_double_click)
     canvas.bind("<MouseWheel>", on_viz_mousewheel)
     # Linux: <Button-4>/<Button-5> вместо <MouseWheel>; .delta отсутствует —
     # проставляем вручную и переиспользуем сам event (у него уже есть x/y).
