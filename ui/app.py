@@ -423,23 +423,22 @@ def _setup_canvas_events(canvas):
     canvas.bind("<Double-Button-1>", _on_double_click)
     canvas.bind("<Button-3>", _on_canvas_click)
     canvas.bind("<MouseWheel>", _on_mousewheel)
-    canvas.bind("<Button-4>",
-                lambda e: _on_mousewheel(tk.Event(type='MouseWheel', delta=120, x=e.x, y=e.y)))
-    canvas.bind("<Button-5>",
-                lambda e: _on_mousewheel(tk.Event(type='MouseWheel', delta=-120, x=e.x, y=e.y)))
+    # Linux: колесо мыши приходит как <Button-4> (вверх) / <Button-5> (вниз)
+    # без атрибута .delta. Подставляем delta вручную и переиспользуем event,
+    # т.к. tk.Event() не принимает kwargs в конструкторе.
+    canvas.bind("<Button-4>", _on_wheel_up)
+    canvas.bind("<Button-5>", _on_wheel_down)
     canvas.bind("<Motion>", _on_mouse_move)
 
     # Сохраняем оригинальные биндинги для восстановления после viz-режима
-    _btn4 = lambda e: _on_mousewheel(tk.Event(type='MouseWheel', delta=120, x=e.x, y=e.y))
-    _btn5 = lambda e: _on_mousewheel(tk.Event(type='MouseWheel', delta=-120, x=e.x, y=e.y))
     cfg.widgets["original_bindings"] = {
         "button_press_1": _start_drag,
         "b1_motion": _during_drag,
         "double_button_1": _on_double_click,
         "button_3": _on_canvas_click,
         "mousewheel": _on_mousewheel,
-        "button_4": _btn4,
-        "button_5": _btn5,
+        "button_4": _on_wheel_up,
+        "button_5": _on_wheel_down,
         "motion": _on_mouse_move,
     }
 
@@ -585,6 +584,19 @@ def _on_mousewheel(event):
     from ui.renderer import redraw_grid
     from ui.navigation import on_mousewheel
     on_mousewheel(event, redraw_grid)
+
+
+def _on_wheel_up(event):
+    """Linux: <Button-4> = прокрутка вверх. Проставляем delta и переиспользуем event,
+    т.к. tk.Event() не принимает kwargs и не позволяет синтезировать MouseWheel-событие."""
+    event.delta = 120
+    _on_mousewheel(event)
+
+
+def _on_wheel_down(event):
+    """Linux: <Button-5> = прокрутка вниз. Проставляем delta и переиспользуем event."""
+    event.delta = -120
+    _on_mousewheel(event)
 
 
 def _on_mouse_move(event):
