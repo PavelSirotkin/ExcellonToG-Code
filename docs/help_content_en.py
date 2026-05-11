@@ -541,6 +541,11 @@ HELP_SECTIONS = {
             {"type": "bullet", "text": "Legend — list of tools on the right with filters"},
             {"type": "bullet", "text": "Info panel — current command, coordinates"},
 
+            {"type": "h2", "text": "Mouse controls"},
+            {"type": "bullet", "text": "Mouse wheel — zoom focused on the cursor"},
+            {"type": "bullet", "text": "LMB + drag — pan the view"},
+            {"type": "bullet", "text": "LMB double-click — auto-zoom (fit the toolpath to the window)"},
+
             {"type": "tip", "text": "Always check the visualization before running! Especially on unfamiliar boards or after changing parameters."},
 
             {"type": "h3", "text": "What to look for"},
@@ -588,7 +593,7 @@ HELP_SECTIONS = {
 
             {"type": "h2", "text": "Actions"},
             {"type": "bullet", "text": "Click the checkbox — show / hide the tool"},
-            {"type": "bullet", "text": "Double-click an entry — solo mode (only this tool)"},
+            {"type": "bullet", "text": "The 👁 button next to a row — solo mode (only this tool)"},
             {"type": "bullet", "text": "Hover — highlight this tool's path"},
 
             {"type": "h2", "text": "Typical tools in the legend"},
@@ -597,7 +602,7 @@ HELP_SECTIONS = {
             {"type": "bullet", "text": "Outline — outline cut"},
             {"type": "bullet", "text": "Rapid — rapid moves (often listed separately)"},
 
-            {"type": "tip", "text": "To examine a single tool in detail — use solo mode (double-click). It's easier to spot missing or extra movements."},
+            {"type": "tip", "text": "To examine a single tool in detail — click the 👁 button next to its row to enter solo mode. It's easier to spot missing or extra movements."},
         ]
     },
 
@@ -777,6 +782,9 @@ HELP_SECTIONS = {
             {"type": "bullet", "text": "Dark gray line — board outline"},
             {"type": "bullet", "text": "Red circles — holes outside the outline (warning)"},
 
+            {"type": "h2", "text": "In visualization mode"},
+            {"type": "bullet", "text": "The same gestures work in the 2.5D G-code visualization: wheel — zoom, LMB + drag — pan, double-click — auto-zoom."},
+
             {"type": "tip", "text": "Use double-click for quick centering and zooming of all elements."},
         ]
     },
@@ -840,6 +848,9 @@ HELP_SECTIONS = {
 
             {"type": "h2", "text": "G-code Visualization"},
             {"type": "bullet", "text": "Space — play / pause (when player has focus)"},
+            {"type": "bullet", "text": "LMB double-click — auto-zoom to the toolpath"},
+            {"type": "bullet", "text": "Mouse wheel — zoom"},
+            {"type": "bullet", "text": "LMB + drag — pan the view"},
 
             {"type": "tip", "text": "F1 works from anywhere in the application — press it whenever you need help on the current step."},
         ]
@@ -1212,6 +1223,14 @@ HELP_SECTIONS = {
             {"type": "h2", "text": "Current version"},
             {"type": "bullet", "text": "ExcellonToG-Code 5.5 (May 2026)"},
 
+            {"type": "h2", "text": "Patches after 5.5.3"},
+            {"type": "bullet", "text": "🐧 Linux compatibility of file dialogs — cross-platform extension filter patterns (previously the filter showed an empty list on Linux)."},
+            {"type": "bullet", "text": "🐧 Linux compatibility of mouse wheel — correct scrolling/zoom on the canvas, in the statistics window and in visualization mode (<Button-4>/<Button-5>)."},
+            {"type": "bullet", "text": "🎬 LMB double-click auto-zoom in visualization mode — now works the same as on the main canvas."},
+            {"type": "bullet", "text": "📋 Legend scrolls only when needed — a short tool list no longer drifts on mouse wheel."},
+            {"type": "bullet", "text": "🐧 Child dialogs of the tool database window now stay above the modal window on Linux."},
+            {"type": "paragraph", "text": "The full change list is in changes.md in the project root."},
+
             {"type": "h2", "text": "Key changes in v5.5"},
             {"type": "bullet", "text": "🛠 Extra drilling depth (Pro) — per-tool depth override: a drill can plunge deeper than the global drill_z by a specified amount"},
             {"type": "bullet", "text": "🐛 Fixed tab shaving on first plunge — outline cut now starts in the middle of the longest non-tab segment, the cutter no longer cuts through the bridge"},
@@ -1290,7 +1309,7 @@ HELP_SECTIONS = {
             {"type": "h2", "text": "License"},
             {"type": "paragraph", "text": "Free «ПНХ» / «PNZ» license — \"Use it in good health\". The program is free for any use — personal and commercial."},
 
-            {"type": "paragraph", "text": "Details — in the LICENSE file and RELEASE_NOTES.md in the project root."},
+            {"type": "paragraph", "text": "Details — in the LICENSE file in the project root."},
 
             {"type": "tip", "text": "Current releases and source code: github.com/PavelSirotkin/ExcellonToG-Code"},
         ]

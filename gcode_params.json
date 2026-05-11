@@ -7,8 +7,8 @@
   "park_z": 30.0,
   "outline_tool_diameter": 2.0,
   "outline_depth_per_pass": 2.5,
-  "outline_n_tabs": 10,
-  "outline_tab_width": 4.0,
+  "outline_n_tabs": 4,
+  "outline_tab_width": 3.0,
   "outline_tab_height": 0.5,
   "outline_direction": "CCW"
 }
