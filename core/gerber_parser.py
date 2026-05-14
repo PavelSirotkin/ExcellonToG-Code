@@ -345,7 +345,10 @@ def is_gerber_file(filename: str) -> bool:
         return ('%FS' in content or 'G04' in content or
                 'M02' in content or 'D01' in content or
                 'G36' in content or 'G01' in content)
-    except Exception:
+    except (OSError, PermissionError) as e:
+        # errors='ignore' уже подавляет UnicodeDecodeError, так что сюда
+        # реалистично попадают только проблемы файловой системы.
+        logger.warning("is_gerber_file: cannot read %s: %s", filename, e)
         return False
 
 

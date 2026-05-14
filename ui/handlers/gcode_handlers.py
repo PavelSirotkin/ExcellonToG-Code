@@ -264,6 +264,14 @@ def generate_drilling_gcode():
         # уходит в лог через logger.exception, пользователю — локализованное
         # сообщение с str(e).
         logger.exception("G-code generation failed")
+        # Сбросить status_label, чтобы не оставался зависший «генерируется…»
+        # из предыдущего шага. Делаем именно в except, а не в finally —
+        # на успешном пути статус уже выставлен правильно
+        # (show_result_dialog / app.status.gcode_saved).
+        try:
+            cfg.get_widget("status_label").config(text=t("app.status.ready"))
+        except Exception:
+            pass  # status_label может отсутствовать в edge-сценариях
         messagebox.showerror(
             t("app.dlg.error"),
             t("app.err.gen_failed", error=str(e))
@@ -344,6 +352,14 @@ def generate_milling_gcode():
         # уходит в лог через logger.exception, пользователю — локализованное
         # сообщение с str(e).
         logger.exception("G-code generation failed")
+        # Сбросить status_label, чтобы не оставался зависший «генерируется…»
+        # из предыдущего шага. Делаем именно в except, а не в finally —
+        # на успешном пути статус уже выставлен правильно
+        # (show_result_dialog / app.status.gcode_saved).
+        try:
+            cfg.get_widget("status_label").config(text=t("app.status.ready"))
+        except Exception:
+            pass  # status_label может отсутствовать в edge-сценариях
         messagebox.showerror(
             t("app.dlg.error"),
             t("app.err.gen_failed", error=str(e))
@@ -478,6 +494,14 @@ def generate_combined_gcode():
         # уходит в лог через logger.exception, пользователю — локализованное
         # сообщение с str(e).
         logger.exception("G-code generation failed")
+        # Сбросить status_label, чтобы не оставался зависший «генерируется…»
+        # из предыдущего шага. Делаем именно в except, а не в finally —
+        # на успешном пути статус уже выставлен правильно
+        # (show_result_dialog / app.status.gcode_saved).
+        try:
+            cfg.get_widget("status_label").config(text=t("app.status.ready"))
+        except Exception:
+            pass  # status_label может отсутствовать в edge-сценариях
         messagebox.showerror(
             t("app.dlg.error"),
             t("app.err.gen_failed", error=str(e))
@@ -591,6 +615,14 @@ def generate_outline_gcode():
         # уходит в лог через logger.exception, пользователю — локализованное
         # сообщение с str(e).
         logger.exception("G-code generation failed")
+        # Сбросить status_label, чтобы не оставался зависший «генерируется…»
+        # из предыдущего шага. Делаем именно в except, а не в finally —
+        # на успешном пути статус уже выставлен правильно
+        # (show_result_dialog / app.status.gcode_saved).
+        try:
+            cfg.get_widget("status_label").config(text=t("app.status.ready"))
+        except Exception:
+            pass  # status_label может отсутствовать в edge-сценариях
         messagebox.showerror(
             t("app.dlg.error"),
             t("app.err.gen_failed", error=str(e))

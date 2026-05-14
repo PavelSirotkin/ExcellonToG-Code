@@ -2,6 +2,20 @@
 Excellon To G-code — точка входа.
 Конвертация Excellon-файлов в G-code с визуализацией.
 """
+import sys
+
+# Минимальная версия Python — 3.8 (это заявлено в README и явно тестируется).
+# Проверяем ДО любых импортов из проекта: если запустить на 3.7, импорт может
+# упасть с непонятным traceback (например, через f-strings c walrus или
+# typing-конструкции). Здесь — понятное сообщение и аккуратный выход.
+if sys.version_info < (3, 8):
+    sys.stderr.write(
+        "ExcellonToG-Code requires Python 3.8 or newer.\n"
+        "ExcellonToG-Code требует Python 3.8 или новее.\n"
+        "Current version: {}.{}.{}\n".format(*sys.version_info[:3])
+    )
+    sys.exit(1)
+
 import logging
 import os
 

@@ -3,12 +3,12 @@
 """
 import os
 import logging
-from typing import Tuple
+from typing import List, Optional, Tuple
 
 logger = logging.getLogger(__name__)
 
 
-def validate_save_path(filename: str, allowed_base_dirs: list = None) -> Tuple[bool, str]:
+def validate_save_path(filename: str, allowed_base_dirs: Optional[List[str]] = None) -> Tuple[bool, str]:
     """
     Проверить безопасность пути для сохранения файла.
     

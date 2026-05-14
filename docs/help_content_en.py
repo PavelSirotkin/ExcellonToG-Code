@@ -1221,15 +1221,16 @@ HELP_SECTIONS = {
             {"type": "title", "text": "Version and license"},
 
             {"type": "h2", "text": "Current version"},
-            {"type": "bullet", "text": "ExcellonToG-Code 5.5 (May 2026)"},
+            {"type": "bullet", "text": "ExcellonToG-Code 5.6 (May 2026)"},
 
-            {"type": "h2", "text": "Patches after 5.5.3"},
-            {"type": "bullet", "text": "🐧 Linux compatibility of file dialogs — cross-platform extension filter patterns (previously the filter showed an empty list on Linux)."},
-            {"type": "bullet", "text": "🐧 Linux compatibility of mouse wheel — correct scrolling/zoom on the canvas, in the statistics window and in visualization mode (<Button-4>/<Button-5>)."},
+            {"type": "h2", "text": "Key changes in v5.6"},
+            {"type": "bullet", "text": "🐧 Full Linux compatibility: file dialog filters, mouse wheel on the canvas / statistics window / visualization mode, child dialogs of the tool database window."},
             {"type": "bullet", "text": "🎬 LMB double-click auto-zoom in visualization mode — now works the same as on the main canvas."},
             {"type": "bullet", "text": "📋 Legend scrolls only when needed — a short tool list no longer drifts on mouse wheel."},
-            {"type": "bullet", "text": "🐧 Child dialogs of the tool database window now stay above the modal window on Linux."},
-            {"type": "paragraph", "text": "The full change list is in changes.md in the project root."},
+            {"type": "bullet", "text": "🐍 Restored Python 3.8 compatibility + explicit minimum-version check in main.py."},
+            {"type": "bullet", "text": "📦 Spec for building a 32-bit .exe for Windows 7 — ExcellonToG-Code-win32.spec."},
+            {"type": "bullet", "text": "🧹 Internal quality improvements: logging in is_gerber_file, status-bar reset on G-code generation error, validate_save_path typing, parent= for statistics window dialogs."},
+            {"type": "paragraph", "text": "Details — in RELEASE_NOTES.md in the project root."},
 
             {"type": "h2", "text": "Key changes in v5.5"},
             {"type": "bullet", "text": "🛠 Extra drilling depth (Pro) — per-tool depth override: a drill can plunge deeper than the global drill_z by a specified amount"},
@@ -1294,6 +1295,7 @@ HELP_SECTIONS = {
             {"type": "bullet", "text": "Tabs strictly at midpoints of sides (not at corners)"},
 
             {"type": "h2", "text": "History"},
+            {"type": "bullet", "text": "v5.6 — May 2026: Full Linux compatibility, auto-zoom in visualization mode, Python 3.8 support, 32-bit Windows 7 build"},
             {"type": "bullet", "text": "v5.5 — May 2026: Extra drilling depth (Pro), safe first plunge in outline cut, changed cutting order (inner cutouts first)"},
             {"type": "bullet", "text": "v5.4 — May 2026: Arbitrary shape contours, automatic contour type detection, KiCad stroke stitching"},
             {"type": "bullet", "text": "v5.3 — May 2026: Exp format support, legend localization"},

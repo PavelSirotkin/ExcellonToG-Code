@@ -558,7 +558,7 @@ class StatisticsWindow:
         text = self.generate_text_report()
         self.window.clipboard_clear()
         self.window.clipboard_append(text)
-        messagebox.showinfo(t("stats.copied.title"), t("stats.copied.msg"))
+        messagebox.showinfo(t("stats.copied.title"), t("stats.copied.msg"), parent=self.window)
     
     def generate_text_report(self):
         """Сгенерировать текстовый отчёт (локализованный)."""
@@ -638,7 +638,7 @@ class StatisticsWindow:
 def show_statistics_window(parent):
     """Показать окно статистики."""
     if not cfg.current_tools and not cfg.slot_tools and not cfg.board_outline:
-        messagebox.showinfo(t("stats.no_data.title"), t("stats.no_data.msg"))
+        messagebox.showinfo(t("stats.no_data.title"), t("stats.no_data.msg"), parent=parent)
         return
-    
+
     StatisticsWindow(parent)
