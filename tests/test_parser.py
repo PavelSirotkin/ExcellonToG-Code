@@ -429,8 +429,11 @@ class TestSlotPartialCoordinatesH1:
         f.write_text(content)
         with caplog.at_level("WARNING", logger="core.parser"):
             tools = parse_slot_file(str(f), coord_format="3.3")
-        # Слотов быть не должно
-        assert tools['1']['slots'] == []
+        # Слотов с T1 быть не должно: parse_slot_file отфильтровывает
+        # инструменты без валидных слотов (см. core/parser.py — фильтр T00
+        # и пустых tool-определений). .get(...) делает проверку устойчивой
+        # к обоим вариантам поведения парсера.
+        assert tools.get('1', {}).get('slots', []) == []
         # Должен быть warning о пропуске
         assert any("G00 must have both X and Y" in rec.message for rec in caplog.records)
 
@@ -443,7 +446,9 @@ class TestSlotPartialCoordinatesH1:
         f.write_text(content)
         with caplog.at_level("WARNING", logger="core.parser"):
             tools = parse_slot_file(str(f), coord_format="3.3")
-        assert tools['1']['slots'] == []
+        # см. test_g00_missing_y_is_skipped: инструмент без валидных слотов
+        # отфильтровывается; .get(...) устойчиво к обоим вариантам.
+        assert tools.get('1', {}).get('slots', []) == []
 
     def test_g01_modal_x_inherits_from_g00(self, tmp_path):
         """Стандартное Excellon-поведение: G01 без X наследует X из G00."""
@@ -528,7 +533,10 @@ class TestModalCoordinatesAcrossToolChangeH2:
         f.write_text(content)
         with caplog.at_level("WARNING", logger="core.parser"):
             tools = parse_excellon_file(str(f), coord_format="3.3")
-        assert tools['1']['holes'] == []
+        # parse_excellon_file отфильтровывает инструменты без отверстий
+        # (см. фильтр T00 в core/parser.py). .get(...) делает проверку
+        # устойчивой к обоим вариантам поведения парсера.
+        assert tools.get('1', {}).get('holes', []) == []
         assert any("incomplete coordinates" in rec.message for rec in caplog.records)
 
     def test_existing_pattern_still_works(self, tmp_path):

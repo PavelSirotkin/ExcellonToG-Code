@@ -41,6 +41,13 @@ def build_outline_section(buf, segments: List[Dict], filename: str,
 
     tool_diameter = outline_params.get('tool_diameter', 2.0)
     depth_per_pass = outline_params.get('depth_per_pass', 0.5)
+    # Защита от depth_per_pass <= 0: основной путь через UI ловится
+    # validate_outline_params, но при прямом вызове генератора (тесты,
+    # программный пайплайн) попадание нуля в деление давало ZeroDivisionError.
+    # Минимум 0.01 мм — заведомо тонкий проход, даёт осмысленный G-code
+    # вместо краша. Нормализуем здесь, чтобы и G-code-комментарий
+    # «Depth per pass: …», и расчёт n_passes использовали одно значение.
+    depth_per_pass = max(float(depth_per_pass), 0.01)
     n_tabs = int(outline_params.get('n_tabs', 4))
     tab_width = outline_params.get('tab_width', 3.0)
     tab_height = outline_params.get('tab_height', 1.0)
@@ -119,7 +126,7 @@ def build_outline_section(buf, segments: List[Dict], filename: str,
     # уровня сохраняется.
     paths.sort(key=lambda p: -p['depth'])
 
-    # Вычисляем количество Z-проходов
+    # Вычисляем количество Z-проходов (depth_per_pass уже нормализован выше).
     total_depth = abs(drill_z)
     n_passes = max(1, int(math.ceil(total_depth / depth_per_pass)))
 

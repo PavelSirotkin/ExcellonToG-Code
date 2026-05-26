@@ -350,11 +350,33 @@ HELP_SECTIONS = {
             {"type": "code", "text": "M03 S20000   ; RPM from database"},
             {"type": "code", "text": "G0 X.. Y.."},
             {"type": "code", "text": "G1 Z-1.8 F100   ; plunge from database"},
-                        {"type": "code", "text": "G0 Z5 F500   ; retract from database"},
+            {"type": "code", "text": "G0 Z5 F500   ; retract from database"},
 
             {"type": "tip", "text": "The tool database is parameters configured once for the entire fleet of your drills and mills. After that, just pick a board and click «Generate»."},
 
             {"type": "warning", "text": "Make sure all diameters from the board are in the database. The «Tool X not found» warning means the program will use global values — possibly incorrect for that diameter."},
+
+            {"type": "h2", "text": "🔗 Merging drills by rounding (Pro only)"},
+            {"type": "paragraph", "text": "After Excellon conversion from inches, drill diameters often come out as non-standard values: 0.711, 0.728, 0.762, 1.171 mm — no one actually drills with these. Pro mode lets you merge such tools, rounding each diameter to the nearest one available in the tool database."},
+
+            {"type": "h3", "text": "How to use"},
+            {"type": "bullet", "text": "In the legend, Ctrl + LMB (or Shift + LMB) a tool row — the row is highlighted in honey-amber. You can mark multiple rows."},
+            {"type": "bullet", "text": "Right-click anywhere on the legend and pick «🔗 Merge selected»."},
+            {"type": "bullet", "text": "Each selected diameter is rounded to the nearest one in the database (mathematical rounding, min |Δ|). Tools that end up with the same new diameter are merged — all their holes are combined."},
+            {"type": "bullet", "text": "If the file already had a tool with the target diameter, holes of the selected ones are appended to it."},
+
+            {"type": "h3", "text": "Example"},
+            {"type": "bullet", "text": "Database contains diameters 0.7 and 0.8."},
+            {"type": "bullet", "text": "You selected T01 (0.711), T02 (0.728), T03 (0.762), T04 (0.78)."},
+            {"type": "bullet", "text": "After «🔗 Merge selected»: T01 (0.711) + T02 (0.728) → 0.7 (one tool with combined holes). T03 (0.762) + T04 (0.78) → 0.8."},
+
+            {"type": "h3", "text": "Undo — two options"},
+            {"type": "bullet", "text": "«✂️ Unmerge selected» — restores only the selected merge-results back to the original state. Other merges stay in place."},
+            {"type": "bullet", "text": "«↩️ Unmerge all» — global rollback to the state right after the file was loaded."},
+
+            {"type": "tip", "text": "After merging, both the legend and the resulting G-code go from smaller to larger diameter — the tool change order on the machine remains correct."},
+
+            {"type": "warning", "text": "If the tool database is empty, «Merge selected» shows a warning and does nothing. Open «🗄 Tool database» first and add the diameters you need."},
         ]
     },
 
@@ -851,6 +873,12 @@ HELP_SECTIONS = {
             {"type": "bullet", "text": "LMB double-click — auto-zoom to the toolpath"},
             {"type": "bullet", "text": "Mouse wheel — zoom"},
             {"type": "bullet", "text": "LMB + drag — pan the view"},
+
+            {"type": "h2", "text": "Tool legend"},
+            {"type": "bullet", "text": "LMB on ☑ checkbox — show / hide the tool"},
+            {"type": "bullet", "text": "LMB on the 👁 button next to a row — solo mode (only this tool)"},
+            {"type": "bullet", "text": "Ctrl + LMB or Shift + LMB on a row (Pro) — select the tool for the «Merge» operation"},
+            {"type": "bullet", "text": "RMB on the legend — context menu (Show All / Hide All; in Pro: Merge selected / Unmerge selected / Unmerge all)"},
 
             {"type": "tip", "text": "F1 works from anywhere in the application — press it whenever you need help on the current step."},
         ]

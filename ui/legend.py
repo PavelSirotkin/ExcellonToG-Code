@@ -2,10 +2,13 @@
 Легенда инструментов: отображение, чекбоксы, контекстное меню, hover/solo.
 Реализует управление памятью для предотвращения утечек при частых обновлениях.
 """
+import copy
 import logging
 import tkinter as tk
 import weakref
+from ui import themed_messagebox as messagebox
 from core.i18n import t
+from core.tool_merge import merge_drill_tools
 import core.config as cfg
 
 logger = logging.getLogger(__name__)
@@ -149,9 +152,16 @@ def update_legend():
                          command=lambda: legend_show_all())
         menu.add_command(label=t("legend.menu.hide_all"),
                          command=lambda: legend_hide_all())
-        menu.add_separator()
-        menu.add_command(label=t("legend.menu.cancel_solo"),
-                         command=lambda: legend_cancel_solo())
+        # Объединение инструментов — только в Pro-режиме. В Simple-режиме
+        # база инструментов недоступна, поэтому пункты прятать имеет смысл.
+        if cfg.app_mode == "pro":
+            menu.add_separator()
+            menu.add_command(label=t("legend.menu.merge"),
+                             command=lambda: legend_merge())
+            menu.add_command(label=t("legend.menu.unmerge_selected"),
+                             command=lambda: legend_unmerge_selected())
+            menu.add_command(label=t("legend.menu.unmerge_all"),
+                             command=lambda: legend_unmerge_all())
         try:
             menu.tk_popup(event.x_root, event.y_root)
         finally:
@@ -195,9 +205,132 @@ def update_legend():
         from ui.renderer import redraw_grid
         redraw_grid()
 
-    def legend_cancel_solo():
-        cfg.solo_tool = None
-        legend_show_all()
+    def on_row_select(event, tool, tool_type):
+        """Ctrl/Shift + ЛКМ по строке — переключает выделение для merge.
+        Доступно только в Pro-режиме (Simple не показывает merge/unmerge в меню,
+        и выделение в нём не имеет смысла) и только для drill-инструментов."""
+        if cfg.app_mode != "pro" or tool_type != 'holes':
+            return "break"
+        if tool in cfg.selected_tools:
+            cfg.selected_tools.discard(tool)
+        else:
+            cfg.selected_tools.add(tool)
+        _refresh_legend_highlight()
+        # Возвращаем "break", чтобы Tk не передал клик дальше другим биндингам
+        # (например, обычный <Button-1> на solo-кнопке).
+        return "break"
+
+    def legend_merge():
+        """Применить округление к выделенным drill-инструментам."""
+        if not cfg.selected_tools:
+            messagebox.showwarning(t("legend.merge.no_selection.title"),
+                                    t("legend.merge.no_selection.msg"))
+            return
+
+        # Достаём базу инструментов из AppContext. Импорт ленивый —
+        # иначе circular import с ui/app.py.
+        from ui.app import get_app_context
+        tool_db = get_app_context().tool_db
+        db_diameters = [float(d["diameter"]) for d in tool_db.get_all_drills()]
+        if not db_diameters:
+            messagebox.showwarning(t("legend.merge.no_db.title"),
+                                    t("legend.merge.no_db.msg"))
+            return
+
+        if not cfg.current_tools:
+            return
+
+        new_tools, mapping_to_key = merge_drill_tools(
+            cfg.current_tools,
+            list(cfg.selected_tools),
+            db_diameters,
+        )
+        if new_tools is None:
+            return  # уже отдиагностировано выше
+
+        # Обновляем cfg.merge_groups (current_cur_key -> set(original_keys)),
+        # чтобы потом «Разъединить выделенные» знал, какие исходные
+        # инструменты слились в данный.
+        for old_key, target in mapping_to_key.items():
+            if old_key in cfg.merge_groups:
+                # old_key сам уже был merge-результатом — переносим его origs
+                # в target и убираем старую группу.
+                cfg.merge_groups.setdefault(target, set()).update(cfg.merge_groups.pop(old_key))
+            else:
+                # old_key — это оригинальный ключ (был в snapshot).
+                cfg.merge_groups.setdefault(target, set()).add(old_key)
+
+        cfg.current_tools = new_tools
+        cfg.selected_tools = set()
+
+        from ui.renderer import redraw_grid
+        redraw_grid()
+        update_legend()
+
+    def legend_unmerge_all():
+        """Глобальный откат к снимку — все merge-операции отменяются."""
+        if cfg.original_current_tools is None or cfg.original_current_tools == cfg.current_tools:
+            messagebox.showinfo(t("legend.unmerge.nothing.title"),
+                                t("legend.unmerge.nothing.msg"))
+            return
+
+        cfg.current_tools = copy.deepcopy(cfg.original_current_tools)
+        cfg.selected_tools = set()
+        cfg.merge_groups = {}
+
+        from ui.renderer import redraw_grid
+        redraw_grid()
+        update_legend()
+
+    def legend_unmerge_selected():
+        """Частичный откат: для каждого выделенного объединённого инструмента
+        восстановить из снимка все исходные инструменты, которые в него вошли;
+        сам merge-результат при этом удаляется."""
+        if not cfg.selected_tools:
+            messagebox.showwarning(t("legend.unmerge_selected.none.title"),
+                                    t("legend.unmerge_selected.none.msg"))
+            return
+        if cfg.original_current_tools is None:
+            messagebox.showinfo(t("legend.unmerge.nothing.title"),
+                                t("legend.unmerge.nothing.msg"))
+            return
+
+        # Берём только те выделенные, что реально являются результатом merge.
+        targets = [k for k in cfg.selected_tools if k in cfg.merge_groups]
+        if not targets:
+            messagebox.showwarning(t("legend.unmerge_selected.not_merged.title"),
+                                    t("legend.unmerge_selected.not_merged.msg"))
+            return
+
+        new_tools = dict(cfg.current_tools)
+        for cur_key in targets:
+            orig_keys = cfg.merge_groups.pop(cur_key, set())
+            # Удаляем merge-результат…
+            new_tools.pop(cur_key, None)
+            # …и восстанавливаем исходные инструменты из снимка.
+            for orig_key in orig_keys:
+                if orig_key not in cfg.original_current_tools:
+                    continue  # маловероятно: snapshot и group рассинхронизированы
+                base = copy.deepcopy(cfg.original_current_tools[orig_key])
+                base['var'] = None
+                base['visible'] = True
+                new_tools[orig_key] = base
+
+        # Сортировка по diameter, как в merge_drill_tools и parser.
+        def _sort_key(item):
+            k, v = item
+            try:
+                tie = int(k)
+            except (TypeError, ValueError):
+                tie = float("inf")
+            return (v.get('diameter', 0.0), tie)
+
+        cfg.current_tools = dict(sorted(new_tools.items(), key=_sort_key))
+        cfg.selected_tools = set()
+
+        from ui.renderer import redraw_grid
+        redraw_grid()
+        update_legend()
 
     def on_row_enter(event, tool, tool_type):
         cfg.hovered_tool = (tool, tool_type)
@@ -286,6 +419,12 @@ def update_legend():
             w.bind("<Enter>", lambda e, t=tool, tt=tool_type: on_row_enter(e, t, tt))
             w.bind("<Leave>", lambda e, t=tool, tt=tool_type: on_row_leave(e, t, tt))
             w.bind("<Button-3>", make_context_menu)
+            # Ctrl/Shift + ЛКМ — мультивыделение для операции «Объединить»
+            # (только для drill-инструментов; внутри on_row_select сам отсечёт).
+            w.bind("<Control-Button-1>",
+                   lambda e, t=tool, tt=tool_type: on_row_select(e, t, tt))
+            w.bind("<Shift-Button-1>",
+                   lambda e, t=tool, tt=tool_type: on_row_select(e, t, tt))
 
         return frame
 
@@ -363,14 +502,21 @@ def update_legend():
 
     def _refresh_legend_highlight():
         for key, frame in legend_rows.items():
+            tool_key, tool_type = key
             is_solo_active = cfg.solo_tool is not None
             is_this_solo = (cfg.solo_tool == key)
             is_hovered = (cfg.hovered_tool == key)
+            is_selected_for_merge = (tool_type == 'holes' and tool_key in cfg.selected_tools)
 
-            if is_hovered and not is_solo_active:
-                bg = cfg.get_color("highlight_hover")
-            elif is_this_solo:
+            # Приоритет: solo > selected (merge) > hover > inactive > обычный.
+            # selected перекрывает hover, чтобы пользователь видел выделение
+            # даже под курсором; solo сильнее (изоляция одного инструмента).
+            if is_this_solo:
                 bg = cfg.get_color("highlight_solo")
+            elif is_selected_for_merge:
+                bg = cfg.get_color("highlight_selected")
+            elif is_hovered and not is_solo_active:
+                bg = cfg.get_color("highlight_hover")
             elif is_solo_active and not is_this_solo:
                 bg = cfg.get_color("highlight_inactive")
             else:

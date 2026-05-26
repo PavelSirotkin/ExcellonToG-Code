@@ -18,12 +18,6 @@
       "plunge_feed": 200.0,
       "retract_feed": 500.0
     },
-    "0.95": {
-      "diameter": 0.95,
-      "spindle_speed": 20000,
-      "plunge_feed": 200.0,
-      "retract_feed": 500.0
-    },
     "1.05": {
       "diameter": 1.05,
       "spindle_speed": 20000,
@@ -47,6 +41,55 @@
       "spindle_speed": 20000,
       "plunge_feed": 400.0,
       "retract_feed": 500.0
+    },
+    "0.3": {
+      "diameter": 0.3,
+      "spindle_speed": 20000,
+      "plunge_feed": 1400.0,
+      "retract_feed": 1400.0,
+      "extra_depth": 0.3
+    },
+    "0.4": {
+      "diameter": 0.4,
+      "spindle_speed": 20000,
+      "plunge_feed": 1400.0,
+      "retract_feed": 1400.0,
+      "extra_depth": 0.2
+    },
+    "0.7": {
+      "diameter": 0.7,
+      "spindle_speed": 60000,
+      "plunge_feed": 1400.0,
+      "retract_feed": 1400.0,
+      "extra_depth": 0.1
+    },
+    "0.8": {
+      "diameter": 0.8,
+      "spindle_speed": 20000,
+      "plunge_feed": 100.0,
+      "retract_feed": 500.0,
+      "extra_depth": 0.0
+    },
+    "1.0": {
+      "diameter": 1.0,
+      "spindle_speed": 20000,
+      "plunge_feed": 100.0,
+      "retract_feed": 500.0,
+      "extra_depth": 0.0
+    },
+    "1.2": {
+      "diameter": 1.2,
+      "spindle_speed": 20000,
+      "plunge_feed": 100.0,
+      "retract_feed": 500.0,
+      "extra_depth": 0.0
+    },
+    "3.2": {
+      "diameter": 3.2,
+      "spindle_speed": 20000,
+      "plunge_feed": 100.0,
+      "retract_feed": 500.0,
+      "extra_depth": 0.0
     }
   },
   "endmills": {

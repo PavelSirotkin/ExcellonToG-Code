@@ -353,43 +353,13 @@ def is_gerber_file(filename: str) -> bool:
 
 
 def check_contour_closed(segments: List[Dict], eps: float = 1e-3) -> bool:
-    """Проверка замкнутости контура.
+    """Проверка замкнутости контура (alias на core.polygon_ops.is_closed_contour).
 
-    Контур из Gerber может состоять из нескольких подконтуров (внешний
-    контур + регионы-вырезы). Считаем контур замкнутым, если ВСЕ его
-    подконтуры замкнуты (start первого сегмента подконтура совпадает
-    с end последнего).
+    Раньше здесь была своя реализация, дублировавшая логику разбиения
+    на подконтуры и сравнения start/end. Теперь функция — тонкая обёртка
+    над `is_closed_contour`, чтобы не было двух источников истины.
+    Сохранён ради обратной совместимости с тестами и потенциальными
+    внешними потребителями имени `check_contour_closed`.
     """
-    if not segments:
-        return False
-
-    # Делим на подконтуры по флагу 'subpath_start'.
-    # Совместимость со старыми данными: если флагов нет вообще,
-    # трактуем как один подконтур.
-    subpaths: List[List[Dict]] = []
-    current: List[Dict] = []
-    for seg in segments:
-        if seg.get('subpath_start') and current:
-            subpaths.append(current)
-            current = []
-        current.append(seg)
-    if current:
-        subpaths.append(current)
-
-    if not subpaths:
-        return False
-
-    def _start(seg):
-        return seg['p1'] if seg['type'] == 'line' else seg['start']
-
-    def _end(seg):
-        return seg['p2'] if seg['type'] == 'line' else seg['end']
-
-    for sp in subpaths:
-        if len(sp) < 2:
-            return False
-        first = _start(sp[0])
-        last = _end(sp[-1])
-        if math.hypot(first[0] - last[0], first[1] - last[1]) >= eps:
-            return False
-    return True
+    from core.polygon_ops import is_closed_contour
+    return is_closed_contour(segments, tol_mm=eps)

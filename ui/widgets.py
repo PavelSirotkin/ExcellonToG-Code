@@ -36,6 +36,14 @@ def _reload_all():
         messagebox.showerror(t("app.dlg.error"), t("app.err.parsing", error=str(e)))
         return
 
+    # Снимок свежеспарсенных drill-инструментов для отката «Объединения».
+    # Любой вызов _reload_all() (выбор нового файла, смена coordinate_format)
+    # начинает «новую жизнь» — snapshot, выделение и история объединений обнуляются.
+    import copy
+    cfg.original_current_tools = copy.deepcopy(cfg.current_tools) if cfg.current_tools else None
+    cfg.selected_tools = set()
+    cfg.merge_groups = {}
+
     from ui.navigation import auto_fit_scale
     auto_fit_scale()
     from ui.renderer import redraw_grid

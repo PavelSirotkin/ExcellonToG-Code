@@ -338,6 +338,15 @@ def parse_excellon_file(filename, coord_format=None, zero_mode=None):
                     "(no modal context yet, last_x=%s, last_y=%s)",
                     line, last_x, last_y
                 )
+    # Отфильтровать «пустые» инструменты: T00 — стандартный end-of-program
+    # маркер Excellon (deselect tool) с d=0 и без отверстий; также бывают
+    # объявленные, но неиспользованные инструменты (template-заголовки).
+    # Их попадание в легенду как «T0 ⌀0.00мм (0 отв.)» — артефакт парсера.
+    tools = {
+        k: v for k, v in tools.items()
+        if v['diameter'] > 0 and v['holes']
+    }
+
     # M3: tie-breaker по int(tool_number) — при одинаковых диаметрах порядок
     # детерминирован (T01 раньше T02), что важно для читаемости G-code и
     # эталонных тестов. int() корректно обрабатывает ведущие нули ("01" == 1).
@@ -466,6 +475,13 @@ def parse_slot_file(filename, coord_format=None, zero_mode=None):
             i += 1
             continue
         i += 1
+    # Отфильтровать «пустые» инструменты — то же, что в parse_excellon_file:
+    # T00 и любые объявленные, но неиспользованные определения инструментов
+    # не должны попадать в легенду.
+    tools = {
+        k: v for k, v in tools.items()
+        if v['diameter'] > 0 and v['slots']
+    }
     for tool, data in tools.items():
         if data['slots']:
             data['slots'] = nearest_neighbor_tsp_slots(data['slots'])

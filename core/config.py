@@ -34,6 +34,7 @@ THEME_LIGHT = {
     "highlight_hover": "#D0E8FF",
     "highlight_solo": "#C8F0C8",
     "highlight_inactive": "#F0F0F0",
+    "highlight_selected": "#FFE08A",
     # Tooltip
     "tooltip_bg": "#FFFACD",
     "tooltip_fg": "#000000",
@@ -83,6 +84,7 @@ THEME_DARK = {
     "highlight_hover": "#264F78",
     "highlight_solo": "#2D5A2D",
     "highlight_inactive": "#2A2A2A",
+    "highlight_selected": "#7A5C20",
     "tooltip_bg": "#3F3F1F",
     "tooltip_fg": "#E0E0E0",
     "tooltip_hint_fg": "#A0A0A0",
@@ -277,6 +279,23 @@ outline_violations = []       # список (x, y) нарушающих точ�
 hovered_tool = None   # (tool_key, tool_type) или None
 solo_tool = None      # (tool_key, tool_type) или None
 
+# Множественный выбор drill-инструментов в легенде (Ctrl/Shift + ЛКМ) для
+# операции «Объединить». Содержит ключи (tool_key) выделенных инструментов
+# из cfg.current_tools. Сбрасывается при загрузке/перепарсе файла.
+selected_tools = set()
+
+# Снимок cfg.current_tools, сделанный сразу после первичного парсинга файла.
+# Нужен для отката операции «Объединить» (см. ui.legend.legend_unmerge_all
+# и legend.legend_unmerge_selected). None означает, что снимок ещё не сделан.
+original_current_tools = None
+
+# История объединений: для каждого ТЕКУЩЕГО инструмента, который является
+# результатом merge, хранится множество ОРИГИНАЛЬНЫХ ключей, которые в него
+# вошли. Используется для частичного отката «Разъединить выделенные».
+# Формат: {current_key: set(original_keys)}.
+# Очищается при каждом перепарсе и при «Разъединить все».
+merge_groups = {}
+
 # ==========================================================
 # Глобальное состояние — визуализатор G-code
 # ==========================================================
@@ -345,7 +364,12 @@ def set_widget(name: str, widget) -> None:
 
 
 def get_param(name):
-    """Получить числовое значение параметра G-code."""
+    """Получить числовое значение параметра G-code.
+    Все известные пути ошибки конвертируются в ValueError с осмысленным
+    сообщением: KeyError от незнакомого имени, AttributeError от не-Entry
+    виджета, ValueError/TypeError от пустого/нечислового значения. Это
+    позволяет вызывающему коду показывать пользователю понятное сообщение
+    вместо traceback'а из глубины Tkinter."""
     param_map = {
         "safe_z": "safe_z_entry",
         "drill_z": "drill_z_entry",
@@ -359,7 +383,25 @@ def get_param(name):
         "outline_tab_width": "outline_tab_width_entry",
         "outline_tab_height": "outline_tab_height_entry",
     }
+    if name not in param_map:
+        raise ValueError(
+            f"Неизвестный параметр '{name}'. Допустимые: {sorted(param_map)}"
+        )
     entry = widgets.get(param_map[name])
     if entry is None:
         raise ValueError(f"Виджет параметра '{name}' не найден")
-    return float(entry.get())
+    try:
+        return float(entry.get())
+    except AttributeError as e:
+        # entry существует, но это не Tkinter Entry/Spinbox/Combobox — ошибка
+        # инициализации виджета (например, в widgets[<key>] положили None или
+        # объект без .get()). Раньше маскировалось голым AttributeError.
+        raise ValueError(
+            f"Виджет параметра '{name}' инициализирован неправильно "
+            f"(нет метода .get()): {e}"
+        ) from e
+    except (ValueError, TypeError) as e:
+        # Пустая строка или нечисловое значение в поле ввода.
+        raise ValueError(
+            f"Не удалось разобрать значение параметра '{name}' как число: {e}"
+        ) from e

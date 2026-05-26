@@ -551,12 +551,20 @@ def _normalize(v: Tuple[float, float]) -> Tuple[float, float]:
 
 
 def _perpendicular(v: Tuple[float, float], outward: bool = True) -> Tuple[float, float]:
-    """Получить перпендикуляр к вектору (поворот на 90°)."""
+    """Получить перпендикуляр к вектору (поворот на 90°).
+
+    Знаки подобраны под соглашение, используемое в этом модуле: точки
+    нормализуются к CW-обходу перед offset (см. _offset_polygon_cw),
+    и при outward=True результат указывает НАРУЖУ полигона. НЕ менять
+    знаки без одновременного обновления _offset_polygon_cw и тестов
+    test_polygon_ops (особенно offset/tabs) — даже на вид «симметричное»
+    изменение тихо инвертирует все offset'ы.
+    """
     x, y = v
     if outward:
-        return (-y, x)  # Поворот на +90° (внешняя нормаль для CCW)
+        return (-y, x)
     else:
-        return (y, -x)  # Поворот на -90°
+        return (y, -x)
 
 
 def _line_intersection(p1: Tuple[float, float], d1: Tuple[float, float],
