@@ -17,10 +17,58 @@ from core.validators import (
     validate_points_list,
     validate_gcode_segment,
     validate_gcode_segments,
+    parse_decimal,
+    parse_int,
 )
 
 
 FIXTURES_DIR = os.path.join(os.path.dirname(__file__), 'fixtures')
+
+
+class TestParseDecimal:
+    def test_comma_separator(self):
+        assert parse_decimal("0,3") == 0.3
+
+    def test_dot_separator(self):
+        assert parse_decimal("0.3") == 0.3
+
+    def test_integer_string(self):
+        assert parse_decimal("5") == 5.0
+
+    def test_negative_comma(self):
+        assert parse_decimal("-2,5") == -2.5
+
+    def test_whitespace_stripped(self):
+        assert parse_decimal("  1,5  ") == 1.5
+
+    def test_numeric_input(self):
+        assert parse_decimal(2.5) == 2.5
+
+    def test_garbage_returns_default(self):
+        assert parse_decimal("abc") is None
+        assert parse_decimal("abc", 0.0) == 0.0
+
+    def test_empty_returns_default(self):
+        assert parse_decimal("", 7.0) == 7.0
+        assert parse_decimal(None, 1.0) == 1.0
+
+
+class TestParseInt:
+    def test_comma_separator(self):
+        assert parse_int("4,0") == 4
+
+    def test_truncates_float(self):
+        assert parse_int("4,9") == 4
+
+    def test_plain_int(self):
+        assert parse_int("10") == 10
+
+    def test_garbage_returns_default(self):
+        assert parse_int("xyz") is None
+        assert parse_int("xyz", 0) == 0
+
+    def test_empty_returns_default(self):
+        assert parse_int("", 3) == 3
 
 
 class TestValidateCoordinateFormat:

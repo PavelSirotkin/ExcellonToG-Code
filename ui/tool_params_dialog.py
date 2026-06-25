@@ -5,7 +5,9 @@
 import tkinter as tk
 from tkinter import ttk
 from ui import themed_messagebox as messagebox
+from ui.numeric_entry import attach_numeric_validation
 from core.i18n import t
+from core.validators import parse_decimal
 import core.config as cfg
 
 
@@ -73,6 +75,7 @@ def show_tool_params_dialog(parent, tool_type: str, diameter: float,
         cfg.register_themed_widget(e, bg="entry_bg", fg="entry_fg", insertbackground="entry_fg")
         e.insert(0, str(default if default is not None else ""))
         e.pack(side="right")
+        attach_numeric_validation(e, dlg)
         entries[label_text] = e
         return row_ref + 1
 
@@ -109,7 +112,10 @@ def show_tool_params_dialog(parent, tool_type: str, diameter: float,
                 raw = entry.get().strip()
                 if not raw:
                     raise ValueError(t("tool_params.field_empty", field=label))
-                vals[label] = float(raw)
+                num = parse_decimal(raw)
+                if num is None:
+                    raise ValueError(t("app.dlg.invalid_number", value=raw))
+                vals[label] = num
 
             if tool_type == "drill":
                 result["spindle_speed"] = int(vals.get(t("tool_params.fld.spindle_rpm"), 10000))

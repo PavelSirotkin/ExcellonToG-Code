@@ -63,6 +63,7 @@
 
   "app.dlg.warning": "Warning",
   "app.dlg.error": "Error",
+  "app.dlg.invalid_number": "Invalid number: '{value}'",
   "app.dlg.ok": "OK",
   "app.dlg.cancel": "Cancel",
   "app.dlg.close": "Close",

@@ -7,6 +7,8 @@ import json
 import os
 from typing import Dict, Any
 
+from core.validators import parse_decimal
+
 
 DEFAULT_PARAMS = {
     "safe_z": 5.0,
@@ -146,9 +148,8 @@ class GCodeParams:
         for key, widget_key in mapping.items():
             w = widgets.get(widget_key)
             if w is not None:
-                try:
-                    raw = float(w.get())
-                except ValueError:
+                raw = parse_decimal(w.get(), None)
+                if raw is None:
                     continue
                 # Целочисленные параметры приводим к int (чтобы json не содержал 4.0)
                 self._data[key] = int(raw) if key in self._INT_KEYS else raw

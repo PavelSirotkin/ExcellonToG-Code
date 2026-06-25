@@ -9,6 +9,7 @@ import weakref
 from ui import themed_messagebox as messagebox
 from core.i18n import t
 from core.tool_merge import merge_drill_tools
+from core.validators import parse_decimal, parse_int
 import core.config as cfg
 
 logger = logging.getLogger(__name__)
@@ -470,12 +471,12 @@ def update_legend():
 
         # Считываем параметры обрезки из Entry-виджетов
         try:
-            outline_d = float(cfg.get_widget("outline_tool_diameter_entry").get())
-        except (ValueError, AttributeError):
+            outline_d = parse_decimal(cfg.get_widget("outline_tool_diameter_entry").get(), 0.0)
+        except AttributeError:
             outline_d = 0.0
         try:
-            n_tabs = int(cfg.get_widget("outline_n_tabs_entry").get())
-        except (ValueError, AttributeError):
+            n_tabs = parse_int(cfg.get_widget("outline_n_tabs_entry").get(), 0)
+        except AttributeError:
             n_tabs = 0
 
         # Фиктивный data-словарь для переиспользования _build_row

@@ -15,6 +15,7 @@ from core.app_settings import settings, default_settings_path
 from core.i18n import t, set_language, get_language, register_listener
 import core.config as cfg
 from ui.enhanced_tooltip import EnhancedTooltip, TOOLTIPS
+from ui.numeric_entry import numeric_key_validator
 
 logger = logging.getLogger(__name__)
 
@@ -84,33 +85,11 @@ def _apply_language_to_ui():
 
 
 def validate_numeric_entry(value, min_val=None, max_val=None):
-    """Валидация числового ввода для Entry-виджетов.
-    
-    Args:
-        value: Строка для валидации
-        min_val: Минимальное допустимое значение (опционально)
-        max_val: Максимальное допустимое значение (опционально)
-    
-    Returns:
-        True если значение валидно, False иначе
+    """Валидация числового ввода для Entry-виджетов (с поддержкой запятой).
+
+    Делегирует в numeric_key_validator: запятая принимается как разделитель.
     """
-    # Пустая строка разрешена (пользователь может очищать поле)
-    if value == "":
-        return True
-    
-    # Разрешить минус в начале для отрицательных чисел
-    if value == "-":
-        return True
-    
-    try:
-        num = float(value)
-        if min_val is not None and num < min_val:
-            return False
-        if max_val is not None and num > max_val:
-            return False
-        return True
-    except ValueError:
-        return False
+    return numeric_key_validator(value, min_val, max_val)
 
 
 def _localize_widget(widget, key: str, **fmt_kwargs):

@@ -6,6 +6,7 @@ from tkinter import ttk
 from core.i18n import t
 import core.config as cfg
 from ui.enhanced_tooltip import EnhancedTooltip
+from ui.numeric_entry import normalize_comma_inplace
 
 
 def create_gcode_params_panel(parent, root, localize_widget, validate_numeric_entry, on_param_change):
@@ -62,7 +63,9 @@ def create_gcode_params_panel(parent, root, localize_widget, validate_numeric_en
         entry.insert(0, default)
         cfg.register_themed_widget(entry, bg="entry_bg", fg="entry_fg", insertbackground="entry_fg")
         entry.pack(side="right")
-        
+
+        # Живая замена запятой на точку ('0,3' -> '0.3')
+        entry.bind("<KeyRelease>", lambda e, w=entry: normalize_comma_inplace(w), add="+")
         # Автосохранение при потере фокуса или Enter
         entry.bind("<FocusOut>", on_param_change)
         entry.bind("<Return>", on_param_change)
@@ -134,7 +137,9 @@ def create_outline_params_panel(parent, root, localize_widget, validate_numeric_
         entry.insert(0, default)
         cfg.register_themed_widget(entry, bg="entry_bg", fg="entry_fg", insertbackground="entry_fg")
         entry.pack(side="right")
-        
+
+        # Живая замена запятой на точку ('0,3' -> '0.3')
+        entry.bind("<KeyRelease>", lambda e, w=entry: normalize_comma_inplace(w), add="+")
         # Автосохранение при потере фокуса или Enter
         entry.bind("<FocusOut>", on_param_change)
         entry.bind("<Return>", on_param_change)

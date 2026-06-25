@@ -63,6 +63,7 @@
 
   "app.dlg.warning": "Предупреждение",
   "app.dlg.error": "Ошибка",
+  "app.dlg.invalid_number": "Некорректное число: '{value}'",
   "app.dlg.ok": "OK",
   "app.dlg.cancel": "Отмена",
   "app.dlg.close": "Закрыть",

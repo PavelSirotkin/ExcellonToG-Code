@@ -5,8 +5,10 @@
 import tkinter as tk
 from tkinter import ttk, filedialog
 from ui import themed_messagebox as messagebox
+from ui.numeric_entry import attach_numeric_validation
 from core.tool_database import ToolDatabase
 from core.i18n import t
+from core.validators import parse_decimal, parse_int
 from core.path_validator import validate_save_path
 import core.config as cfg
 
@@ -353,6 +355,7 @@ def _edit_drill(tool_db: ToolDatabase, diameter, tree, dlg_parent=None):
             cfg.register_themed_widget(e, bg="entry_bg", fg="entry_fg", readonlybackground="entry_bg")
         else:
             cfg.register_themed_widget(e, bg="entry_bg", fg="entry_fg", insertbackground="entry_fg")
+            attach_numeric_validation(e, dlg)
         e.pack(side="right")
         entries[key] = (e, typ)
 
@@ -365,9 +368,13 @@ def _edit_drill(tool_db: ToolDatabase, diameter, tree, dlg_parent=None):
                     continue
                 raw = e.get().strip()
                 if typ == "float":
-                    vals[key] = float(raw) if raw else 0.0
+                    vals[key] = parse_decimal(raw, None) if raw else 0.0
+                    if vals[key] is None:
+                        raise ValueError(t("app.dlg.invalid_number", value=raw))
                 elif typ == "int":
-                    vals[key] = int(float(raw)) if raw else 0
+                    vals[key] = parse_int(raw, None) if raw else 0
+                    if vals[key] is None:
+                        raise ValueError(t("app.dlg.invalid_number", value=raw))
                 else:
                     vals[key] = raw
             d = vals.pop("diameter")
@@ -461,6 +468,7 @@ def _edit_endmill(tool_db: ToolDatabase, diameter, tree, dlg_parent=None):
             cfg.register_themed_widget(e, bg="entry_bg", fg="entry_fg", readonlybackground="entry_bg")
         else:
             cfg.register_themed_widget(e, bg="entry_bg", fg="entry_fg", insertbackground="entry_fg")
+            attach_numeric_validation(e, dlg)
         e.pack(side="right")
         entries[key] = (e, typ)
 
@@ -473,9 +481,13 @@ def _edit_endmill(tool_db: ToolDatabase, diameter, tree, dlg_parent=None):
                     continue
                 raw = e.get().strip()
                 if typ == "float":
-                    vals[key] = float(raw) if raw else 0.0
+                    vals[key] = parse_decimal(raw, None) if raw else 0.0
+                    if vals[key] is None:
+                        raise ValueError(t("app.dlg.invalid_number", value=raw))
                 elif typ == "int":
-                    vals[key] = int(float(raw)) if raw else 0
+                    vals[key] = parse_int(raw, None) if raw else 0
+                    if vals[key] is None:
+                        raise ValueError(t("app.dlg.invalid_number", value=raw))
                 else:
                     vals[key] = raw
             d = vals.pop("diameter")
