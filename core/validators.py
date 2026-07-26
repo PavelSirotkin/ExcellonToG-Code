@@ -70,7 +70,7 @@ def validate_gcode_params(params: Dict[str, float]) -> List[str]:
             errors.append("Подача должна быть > 0")
     if rapid_rate is not None:
         if rapid_rate <= 0:
-            errors.append("Быстрая подача должна быть > 0")
+            errors.append("Холостой ход должен быть > 0")
     if mill_feed is not None:
         if mill_feed <= 0:
             errors.append("Подача фрезы должна быть > 0")

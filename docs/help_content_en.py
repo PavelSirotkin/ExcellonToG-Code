@@ -258,10 +258,10 @@ HELP_SECTIONS = {
     },
 
     "param_rapid_rate": {
-        "title": "⚙️ Rapid rate (rapid_rate)",
+        "title": "⚙️ Rapid traverse (rapid_rate)",
         "content": [
-            {"type": "title", "text": "Rapid rate (rapid_rate)"},
-            {"type": "paragraph", "text": "The speed of rapid moves (G0) — mm/min. This is the speed at which the tool moves between holes when the mill/drill is at safe_z and not touching the material."},
+            {"type": "title", "text": "Rapid traverse (rapid_rate)"},
+            {"type": "paragraph", "text": "The speed of rapid moves (G00) — mm/min. This is the speed at which the tool moves between holes when the mill/drill is at safe_z and not touching the material."},
 
             {"type": "h2", "text": "Typical values"},
             {"type": "bullet", "text": "Budget machines (GRBL, 3018): 800–1500 mm/min"},
@@ -1249,14 +1249,21 @@ HELP_SECTIONS = {
             {"type": "title", "text": "Version and license"},
 
             {"type": "h2", "text": "Current version"},
-            {"type": "bullet", "text": "ExcellonToG-Code 5.7 (May 2026)"},
+            {"type": "bullet", "text": "ExcellonToG-Code 5.8 (July 2026)"},
+
+            {"type": "h2", "text": "Key changes in v5.8"},
+            {"type": "bullet", "text": "🔧 Spindle speed in «Simple» mode — a new field in the G-code parameters, M03 S.. in every section. «Pro» is unchanged: the speed comes from the tool database."},
+            {"type": "bullet", "text": "💾 The selected «Simple» / «Pro» mode is remembered between sessions — just like the theme and language."},
+            {"type": "bullet", "text": "🏷 «Rapid feed» renamed to «Rapid traverse»: on most controllers F in a G00 block does not set the speed — it comes from the machine configuration."},
+            {"type": "bullet", "text": "🐛 Long parameter labels are no longer truncated."},
+            {"type": "paragraph", "text": "Details — in changes.md in the project root."},
 
             {"type": "h2", "text": "Key changes in v5.7"},
             {"type": "bullet", "text": "🔗 Drill merging by rounding (Pro) — non-standard diameters after inch conversion are rounded to the nearest entry in the tool database."},
             {"type": "bullet", "text": "✂️ «Unmerge selected» — partial rollback of merging for selected tools only, leaving other merge results intact."},
             {"type": "bullet", "text": "📐 TSP re-optimization after merge — eliminates extra travel between formerly separate groups (up to −8% path length)."},
             {"type": "bullet", "text": "🐛 Fixes: ZeroDivisionError in outline at depth_per_pass=0, T00 no longer creates a fake tool in the legend, clear error messages in get_param, removed duplicate check_contour_closed."},
-            {"type": "paragraph", "text": "Details — in changes.md in the project root."},
+            {"type": "paragraph", "text": "Details — in RELEASE_NOTES.md in the project root."},
 
             {"type": "h2", "text": "Key changes in v5.6"},
             {"type": "bullet", "text": "🐧 Full Linux compatibility: file dialog filters, mouse wheel on the canvas / statistics window / visualization mode, child dialogs of the tool database window."},
@@ -1330,6 +1337,7 @@ HELP_SECTIONS = {
             {"type": "bullet", "text": "Tabs strictly at midpoints of sides (not at corners)"},
 
             {"type": "h2", "text": "History"},
+            {"type": "bullet", "text": "v5.8 — July 2026: Spindle speed in «Simple» mode, mode remembered between sessions, «Rapid feed» renamed to «Rapid traverse»"},
             {"type": "bullet", "text": "v5.7 — May 2026: Drill merging by rounding (Pro), partial unmerge, TSP re-optimization after merge"},
             {"type": "bullet", "text": "v5.6 — May 2026: Full Linux compatibility, auto-zoom in visualization mode, Python 3.8 support, 32-bit Windows 7 build"},
             {"type": "bullet", "text": "v5.5 — May 2026: Extra drilling depth (Pro), safe first plunge in outline cut, changed cutting order (inner cutouts first)"},
