@@ -122,6 +122,15 @@ def create_app(context: AppContext = None):
     set_language(settings.get("language", "ru"))
     cfg.apply_theme(settings.get("theme", "light"))
 
+    # Восстановление режима "Простой"/"Про" ДО создания виджетов, чтобы
+    # ModeToggle и кнопка базы инструментов сразу отрисовались правильно.
+    # Проверка членства обязательна: сеттер ModeEngine.mode кидает ValueError
+    # на мусорном значении из вручную отредактированного JSON.
+    saved_mode = settings.get("mode", "simple")
+    if saved_mode in ("simple", "pro"):
+        context.mode_engine.mode = saved_mode
+    cfg.app_mode = context.mode_engine.mode
+
     root = tk.Tk()
     def _update_title():
         root.title(t("app.title", version=VERSION))
@@ -260,6 +269,10 @@ def create_app(context: AppContext = None):
     # Автозагрузка файлов базы инструментов и параметров G-code
     # ==========================================================
     _load_app_data(context)
+
+    # Поле оборотов шпинделя — только в простом режиме (режим восстановлен выше)
+    from ui.panels.params_panel import update_spindle_visibility
+    update_spindle_visibility(context.mode_engine.mode)
 
     # Регистрация глобального слушателя смены языка
     register_listener(_apply_language_to_ui)
@@ -590,10 +603,17 @@ def _on_canvas_resize(event):
 
 def _on_mode_change(mode):
     """Обработчик переключения режима."""
+    from ui.panels.params_panel import update_spindle_visibility
+
     btn = cfg.get_widget("btn_tool_db")
     if btn:
         btn.config(state="normal" if mode == "pro" else "disabled")
     cfg.app_mode = mode
+    # Поле оборотов шпинделя — только в простом режиме
+    update_spindle_visibility(mode)
+    # Запомнить режим между сессиями
+    settings.set("mode", mode)
+    settings.save()
     # Обновить статус
     status = t("app.mode.pro") if mode == "pro" else t("app.mode.simple")
     cfg.get_widget("status_label").config(text=t("app.status.mode", status=status))

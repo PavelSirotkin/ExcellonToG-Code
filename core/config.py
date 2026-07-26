@@ -324,6 +324,7 @@ _WIDGET_KEYS: frozenset = frozenset({
     # Параметры G-code
     "safe_z_entry", "drill_z_entry", "feed_rate_entry",
     "mill_feed_entry", "rapid_rate_entry", "park_z_entry",
+    "spindle_speed_entry", "spindle_speed_row",
     # Отображение
     "show_paths_var",
     # Кнопки
@@ -377,6 +378,7 @@ def get_param(name):
         "mill_feed": "mill_feed_entry",
         "rapid_rate": "rapid_rate_entry",
         "park_z": "park_z_entry",
+        "spindle_speed": "spindle_speed_entry",
         "outline_tool_diameter": "outline_tool_diameter_entry",
         "outline_depth_per_pass": "outline_depth_per_pass_entry",
         "outline_n_tabs": "outline_n_tabs_entry",

@@ -5,6 +5,7 @@
   "mill_feed": 50.0,
   "rapid_rate": 3000.0,
   "park_z": 30.0,
+  "spindle_speed": 10000,
   "outline_tool_diameter": 2.0,
   "outline_depth_per_pass": 2.5,
   "outline_n_tabs": 4,

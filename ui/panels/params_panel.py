@@ -34,16 +34,21 @@ def create_gcode_params_panel(parent, root, localize_widget, validate_numeric_en
         ("app.lbl.mill_feed", "mill_feed", "50"),
         ("app.lbl.rapid_rate", "rapid_rate", "500"),
         ("app.lbl.park_z", "park_z", "30"),
+        # Обороты шпинделя — последним: строка скрывается/показывается по режиму
+        # через pack_forget()/pack(), а pack() возвращает её в конец контейнера.
+        ("app.lbl.spindle_speed", "spindle_speed", "10000"),
     ]
 
     param_entries = {}
+    param_rows = {}
     tooltip_keys = {
         "safe_z": "entry_safe_z",
         "drill_z": "entry_drill_z",
         "feed_rate": "entry_feed_rate",
         "mill_feed": "entry_mill_feed",
         "rapid_rate": "entry_rapid_rate",
-        "park_z": "entry_park_z"
+        "park_z": "entry_park_z",
+        "spindle_speed": "entry_spindle_speed"
     }
 
     # Создать команду валидации для числовых полей
@@ -52,17 +57,22 @@ def create_gcode_params_panel(parent, root, localize_widget, validate_numeric_en
     for label_key, key, default in params:
         row = tk.Frame(params_frame)
         row.pack(fill="x", pady=1)
+        param_rows[key] = row
         cfg.register_themed_widget(row, bg="panel_bg")
         
-        lbl = tk.Label(row, width=22, anchor="w")
-        localize_widget(lbl, label_key)
-        lbl.pack(side="left")
-        cfg.register_themed_widget(lbl, bg="panel_bg", fg="panel_fg")
-        
+        # Поле ввода пакуется первым: так оно всегда получает свои 8 символов,
+        # а метка занимает остаток строки. Фиксированная width у метки не нужна —
+        # длинные подписи (напр. «Обороты шпинделя (об/мин):») обрезались по ней,
+        # хотя место в строке ещё оставалось.
         entry = tk.Entry(row, width=8, validate='key', validatecommand=validate_cmd)
         entry.insert(0, default)
         cfg.register_themed_widget(entry, bg="entry_bg", fg="entry_fg", insertbackground="entry_fg")
         entry.pack(side="right")
+
+        lbl = tk.Label(row, anchor="w")
+        localize_widget(lbl, label_key)
+        lbl.pack(side="left", fill="x", expand=True)
+        cfg.register_themed_widget(lbl, bg="panel_bg", fg="panel_fg")
 
         # Живая замена запятой на точку ('0,3' -> '0.3')
         entry.bind("<KeyRelease>", lambda e, w=entry: normalize_comma_inplace(w), add="+")
@@ -82,8 +92,26 @@ def create_gcode_params_panel(parent, root, localize_widget, validate_numeric_en
     cfg.set_widget("mill_feed_entry", param_entries["mill_feed"])
     cfg.set_widget("rapid_rate_entry", param_entries["rapid_rate"])
     cfg.set_widget("park_z_entry", param_entries["park_z"])
+    cfg.set_widget("spindle_speed_entry", param_entries["spindle_speed"])
+    cfg.set_widget("spindle_speed_row", param_rows["spindle_speed"])
 
     return params_frame
+
+
+def update_spindle_visibility(mode: str):
+    """Показать/скрыть строку оборотов шпинделя.
+
+    Поле нужно только в режиме "Простой" — в "Про" обороты берутся из базы
+    инструментов. Строка создаётся последней в панели, поэтому обратный pack()
+    возвращает её на прежнее место.
+    """
+    row = cfg.widgets.get("spindle_speed_row")
+    if row is None:
+        return
+    if mode == "pro":
+        row.pack_forget()
+    else:
+        row.pack(fill="x", pady=1)
 
 
 def create_outline_params_panel(parent, root, localize_widget, validate_numeric_entry, on_param_change):
@@ -128,15 +156,17 @@ def create_outline_params_panel(parent, root, localize_widget, validate_numeric_
         row.pack(fill="x", pady=1)
         cfg.register_themed_widget(row, bg="panel_bg")
         
-        lbl = tk.Label(row, width=22, anchor="w")
-        localize_widget(lbl, label_key)
-        lbl.pack(side="left")
-        cfg.register_themed_widget(lbl, bg="panel_bg", fg="panel_fg")
-        
+        # Порядок упаковки как в панели параметров G-code: сначала Entry,
+        # затем метка на остаток строки — подпись не обрезается по фикс. ширине.
         entry = tk.Entry(row, width=8, validate='key', validatecommand=validate_cmd)
         entry.insert(0, default)
         cfg.register_themed_widget(entry, bg="entry_bg", fg="entry_fg", insertbackground="entry_fg")
         entry.pack(side="right")
+
+        lbl = tk.Label(row, anchor="w")
+        localize_widget(lbl, label_key)
+        lbl.pack(side="left", fill="x", expand=True)
+        cfg.register_themed_widget(lbl, bg="panel_bg", fg="panel_fg")
 
         # Живая замена запятой на точку ('0,3' -> '0.3')
         entry.bind("<KeyRelease>", lambda e, w=entry: normalize_comma_inplace(w), add="+")
@@ -161,14 +191,14 @@ def create_outline_params_panel(parent, root, localize_widget, validate_numeric_
     dir_row.pack(fill="x", pady=1)
     cfg.register_themed_widget(dir_row, bg="panel_bg")
     
-    dir_lbl = tk.Label(dir_row, width=18, anchor="w")
-    localize_widget(dir_lbl, "app.lbl.outline_direction")
-    dir_lbl.pack(side="left")
-    cfg.register_themed_widget(dir_lbl, bg="panel_bg", fg="panel_fg")
-    
     outline_direction_var = tk.StringVar(value="CCW")
     dir_combo = ttk.Combobox(dir_row, values=["CCW", "CW"], width=6, textvariable=outline_direction_var)
     dir_combo.pack(side="right")
+
+    dir_lbl = tk.Label(dir_row, anchor="w")
+    localize_widget(dir_lbl, "app.lbl.outline_direction")
+    dir_lbl.pack(side="left", fill="x", expand=True)
+    cfg.register_themed_widget(dir_lbl, bg="panel_bg", fg="panel_fg")
     dir_combo.bind("<<ComboboxSelected>>", on_param_change)
     EnhancedTooltip(dir_combo, lambda: t("tt.combo_outline_direction"))
     cfg.set_widget("outline_direction_var", outline_direction_var)

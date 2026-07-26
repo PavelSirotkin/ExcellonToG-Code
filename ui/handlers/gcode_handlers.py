@@ -144,6 +144,23 @@ def build_endmill_tool_params_dict():
     return result
 
 
+def get_global_spindle_speed():
+    """Обороты шпинделя из главного окна («Параметры G-кода»).
+
+    Только для simple-режима: в pro значение берётся из базы инструментов,
+    а поле в главном окне скрыто — его значение не должно попадать в вывод.
+    Пустое / нечисловое / <= 0 → None, т.е. M03 без S (как было раньше).
+    """
+    context = get_app_context()
+    if not context.mode_engine.is_simple:
+        return None
+    try:
+        value = int(cfg.get_param("spindle_speed"))
+    except ValueError:
+        return None
+    return value if value > 0 else None
+
+
 def save_gcode_params_from_ui():
     """Сохранить текущие параметры G-code из Entry-виджетов."""
     context = get_app_context()
@@ -163,7 +180,8 @@ def on_param_change(event=None):
 def enrich_outline_params_with_tool(outline_params: dict, global_params: dict) -> None:
     """Добавить в outline_params рабочую подачу и обороты шпинделя.
 
-    Simple mode → подача берётся из "Подача фрезы" (mill_feed) глобальных параметров.
+    Simple mode → подача берётся из "Подача фрезы" (mill_feed) глобальных параметров,
+                 обороты — из глобального поля "Обороты шпинделя".
     Pro mode   → ищем фрезу по диаметру в базе и берём "cutting_feed" и "spindle_speed".
                  Если точной фрезы нет — пробуем меньшую.
                  Если не найдено ничего — откат на глобальные параметры.
@@ -177,9 +195,9 @@ def enrich_outline_params_with_tool(outline_params: dict, global_params: dict) -
 
     context = get_app_context()
     if context.mode_engine.is_simple:
-        # Simple — единая «Подача фрезы»
+        # Simple — единая «Подача фрезы» и глобальные обороты шпинделя
         outline_params['mill_feed'] = global_params.get('mill_feed', 50)
-        outline_params['spindle_speed'] = None
+        outline_params['spindle_speed'] = global_params.get('spindle_speed')
         return
 
     # Pro — ищем фрезу в базе
@@ -230,6 +248,7 @@ def generate_drilling_gcode():
             'feed_rate': cfg.get_param("feed_rate"),
             'rapid_rate': cfg.get_param("rapid_rate"),
             'park_z': cfg.get_param("park_z"),
+            'spindle_speed': get_global_spindle_speed(),
         }
         tool_params = build_drill_tool_params_dict()
         gcode_text, errors = _build_drilling_gcode(cfg.current_tools, cfg.current_filename, params, tool_params)
@@ -318,6 +337,7 @@ def generate_milling_gcode():
             'mill_feed': cfg.get_param("mill_feed"),
             'rapid_rate': cfg.get_param("rapid_rate"),
             'park_z': cfg.get_param("park_z"),
+            'spindle_speed': get_global_spindle_speed(),
         }
         tool_params = build_endmill_tool_params_dict()
         gcode_text, errors = _build_milling_gcode(cfg.slot_tools, cfg.slot_filename, params, tool_params)
@@ -411,6 +431,7 @@ def generate_combined_gcode():
             'mill_feed': cfg.get_param("mill_feed"),
             'rapid_rate': cfg.get_param("rapid_rate"),
             'park_z': cfg.get_param("park_z"),
+            'spindle_speed': get_global_spindle_speed(),
         }
         drill_tp = build_drill_tool_params_dict()
         endmill_tp = build_endmill_tool_params_dict()
@@ -547,6 +568,7 @@ def generate_outline_gcode():
             'mill_feed': cfg.get_param("mill_feed"),
             'rapid_rate': cfg.get_param("rapid_rate"),
             'park_z': cfg.get_param("park_z"),
+            'spindle_speed': get_global_spindle_speed(),
         }
         outline_params = {
             'tool_diameter': cfg.get_param("outline_tool_diameter"),

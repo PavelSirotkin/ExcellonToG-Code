@@ -196,10 +196,16 @@ def write_tool_parking(f, park_z, rapid_rate):
     f.write("G00 X0 Y0\n")
 
 
-def _get_spindle_speed(tool_params):
-    """Получить скорость шпинделя из параметров инструмента."""
+def _get_spindle_speed(tool_params, global_params=None):
+    """Получить скорость шпинделя.
+
+    Приоритет — параметры инструмента из базы (pro-режим). Если их нет,
+    берётся глобальное значение из «Параметров G-кода» (simple-режим).
+    """
     if tool_params and "spindle_speed" in tool_params:
         return tool_params["spindle_speed"]
+    if global_params:
+        return global_params.get("spindle_speed")
     return None
 
 
@@ -249,7 +255,7 @@ def _emit_drilling_section(buf, current_tools, params, tool_params_dict=None):
         if not data['visible'] or not data['holes']:
             continue
         t_params = tool_params_dict.get(tool) if tool_params_dict else None
-        spindle = _get_spindle_speed(t_params)
+        spindle = _get_spindle_speed(t_params, params)
         # Погружение Z — из базы (plunge_feed) или глобальная feed_rate
         eff_plunge = _get_feed_rate(t_params, 'feed_rate') or feed_rate
         # Подъём Z — из базы (retract_feed) или глобальная rapid_rate
@@ -334,7 +340,7 @@ def _emit_milling_section(buf, slot_tools, params, tool_params_dict=None):
         if not data['visible'] or not data['slots']:
             continue
         t_params = tool_params_dict.get(tool) if tool_params_dict else None
-        spindle = _get_spindle_speed(t_params)
+        spindle = _get_spindle_speed(t_params, params)
         # Погружение Z — из базы (plunge_feed) или глобальная feed_rate
         eff_plunge = _get_feed_rate(t_params, 'feed_rate') or feed_rate
         # Подъём Z — из базы (retract_feed) или глобальная rapid_rate

@@ -17,6 +17,8 @@ DEFAULT_PARAMS = {
     "mill_feed": 50,
     "rapid_rate": 500,
     "park_z": 30,
+    # Обороты шпинделя для простого режима (в pro берутся из базы инструментов)
+    "spindle_speed": 10000,
     # Параметры обрезки по контуру
     "outline_tool_diameter": 2.0,
     "outline_depth_per_pass": 0.5,
@@ -96,7 +98,7 @@ class GCodeParams:
             return False
 
     # Параметры, которые должны храниться и отображаться как целые числа
-    _INT_KEYS = frozenset({"outline_n_tabs"})
+    _INT_KEYS = frozenset({"outline_n_tabs", "spindle_speed"})
 
     def apply_to_ui(self, widgets: Dict[str, Any]):
         """Применить параметры к Entry-виджетам."""
@@ -107,6 +109,7 @@ class GCodeParams:
             "mill_feed": "mill_feed_entry",
             "rapid_rate": "rapid_rate_entry",
             "park_z": "park_z_entry",
+            "spindle_speed": "spindle_speed_entry",
             "outline_tool_diameter": "outline_tool_diameter_entry",
             "outline_depth_per_pass": "outline_depth_per_pass_entry",
             "outline_n_tabs": "outline_n_tabs_entry",
@@ -139,6 +142,7 @@ class GCodeParams:
             "mill_feed": "mill_feed_entry",
             "rapid_rate": "rapid_rate_entry",
             "park_z": "park_z_entry",
+            "spindle_speed": "spindle_speed_entry",
             "outline_tool_diameter": "outline_tool_diameter_entry",
             "outline_depth_per_pass": "outline_depth_per_pass_entry",
             "outline_n_tabs": "outline_n_tabs_entry",

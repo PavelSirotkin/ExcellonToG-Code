@@ -12,6 +12,7 @@ from typing import Any, Dict
 DEFAULT_SETTINGS: Dict[str, Any] = {
     "language": "ru",
     "theme": "light",
+    "mode": "simple",
 }
 
 

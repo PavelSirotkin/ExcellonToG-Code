@@ -307,7 +307,7 @@ HELP_SECTIONS = {
 
             {"type": "h2", "text": "How it works"},
             {"type": "bullet", "text": "All holes are drilled with one feed and one depth"},
-            {"type": "bullet", "text": "Spindle RPM is not set in the G-code (controlled manually)"},
+            {"type": "bullet", "text": "Spindle RPM — a single «Spindle speed» field in the G-code parameters (M03 S.. for every tool; 0 → M03 without S)"},
             {"type": "bullet", "text": "M00 between tools — operator changes drills themselves"},
 
             {"type": "h2", "text": "When to choose"},
@@ -318,7 +318,7 @@ HELP_SECTIONS = {
 
             {"type": "h2", "text": "Limitations"},
             {"type": "bullet", "text": "Cannot set a different feed for different drills"},
-            {"type": "bullet", "text": "No automatic M03 S.. (spindle RPM)"},
+            {"type": "bullet", "text": "The same spindle RPM for every tool (in «Pro» — per diameter)"},
             {"type": "bullet", "text": "No retract at a different speed"},
 
             {"type": "tip", "text": "If you plan to process boards regularly — it's worth setting up «Pro» mode and the tool database once."},
@@ -896,7 +896,7 @@ HELP_SECTIONS = {
 
             {"type": "h2", "text": "Program structure"},
             {"type": "bullet", "text": "Header: units (G21), absolute coordinates (G90)"},
-            {"type": "bullet", "text": "Block per tool: M00 pause + M03 S.. (in «Pro»)"},
+            {"type": "bullet", "text": "Block per tool: M00 pause + M03 S.. (from the database in «Pro», from the shared field in «Simple»)"},
             {"type": "bullet", "text": "Hole sequence: G0 XY → G1 Z → G0 Z"},
             {"type": "bullet", "text": "End: park + M05 + M30"},
 
